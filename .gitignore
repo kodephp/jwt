@@ -1,0 +1,41 @@
+# Dependencies
+/vendor/
+composer.lock
+
+# Testing
+/phpunit.xml
+/.phpunit.cache/
+/.phpunit.result.cache
+
+# IDE
+/.idea/
+/.vscode/
+/.vs/
+nbproject/
+.trae
+/.cursor
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+/build/
+
+# Logs
+/logs/
+*.log
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Coverage
+/coverage/
+
+# Composer
+/composer.phar
+
+# PHPStan
+/phpstan.neon.tmp

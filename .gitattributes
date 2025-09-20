@@ -1,0 +1,57 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Custom for Visual Studio
+*.cs     diff=csharp
+*.sln    merge=union
+*.csproj merge=union
+*.vbproj merge=union
+*.fsproj merge=union
+*.dbproj merge=union
+
+# Standard to msysgit
+*.doc	 diff=astextplain
+*.DOC	 diff=astextplain
+*.docx diff=astextplain
+*.DOCX diff=astextplain
+*.dot  diff=astextplain
+*.DOT  diff=astextplain
+*.pdf  diff=astextplain
+*.PDF	 diff=astextplain
+*.rtf	 diff=astextplain
+*.RTF	 diff=astextplain
+
+# PHP files
+*.php linguist-language=PHP
+*.phtml linguist-language=PHP
+*.php3 linguist-language=PHP
+*.php4 linguist-language=PHP
+*.php5 linguist-language=PHP
+*.php7 linguist-language=PHP
+*.php8 linguist-language=PHP
+
+# Composer
+composer.json linguist-language=JSON
+composer.lock linguist-language=JSON
+
+# Configuration files
+*.yml linguist-language=YAML
+*.yaml linguist-language=YAML
+*.xml linguist-language=XML
+*.dist linguist-language=TEXT
+
+# Markdown files
+*.md linguist-language=Markdown
+*.markdown linguist-language=Markdown
+
+# Ignore some files from GitHub linguist analysis
+.gitattributes linguist-vendored
+.gitignore linguist-vendored
+.editorconfig linguist-vendored
+.php_cs.dist linguist-vendored
+.php_cs.cache linguist-vendored
+
+# Documentation files
+README.md linguist-documentation
+CHANGELOG.md linguist-documentation
+LICENSE linguist-documentation
