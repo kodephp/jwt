@@ -22,7 +22,7 @@ class KodeJwt
     private static ?EventDispatcher $eventDispatcher = null;
     private static ?Builder $builder = null;
     private static ?Parser $parser = null;
-    
+
     /**
      * 初始化JWT包
      */
@@ -31,7 +31,7 @@ class KodeJwt
         static::$configLoader = new ConfigLoader($config);
         static::$eventDispatcher = new EventDispatcher();
     }
-    
+
     /**
      * 获取配置加载器
      */
@@ -40,10 +40,10 @@ class KodeJwt
         if (static::$configLoader === null) {
             static::$configLoader = new ConfigLoader();
         }
-        
+
         return static::$configLoader;
     }
-    
+
     /**
      * 获取事件分发器
      */
@@ -52,10 +52,10 @@ class KodeJwt
         if (static::$eventDispatcher === null) {
             static::$eventDispatcher = new EventDispatcher();
         }
-        
+
         return static::$eventDispatcher;
     }
-    
+
     /**
      * 获取Token构建器
      */
@@ -64,10 +64,10 @@ class KodeJwt
         if (static::$builder === null) {
             static::$builder = new Builder(static::config()->get('guards.api', []));
         }
-        
+
         return static::$builder;
     }
-    
+
     /**
      * 获取Token解析器
      */
@@ -76,40 +76,40 @@ class KodeJwt
         if (static::$parser === null) {
             static::$parser = new Parser(static::config()->get('guards.api', []));
         }
-        
+
         return static::$parser;
     }
-    
+
     /**
      * 获取存储实例
      */
     public static function storage(string $name = null): StorageInterface
     {
         $name = $name ?? static::config()->get('defaults.storage', 'memory');
-        
+
         if (!isset(static::$storages[$name])) {
             $factory = new StorageFactory(static::config());
             static::$storages[$name] = $factory->create($name);
         }
-        
+
         return static::$storages[$name];
     }
-    
+
     /**
      * 获取守卫实例
      */
     public static function guard(string $name = null): GuardInterface
     {
         $name = $name ?? static::config()->get('defaults.guard', 'api');
-        
+
         if (!isset(static::$guards[$name])) {
             $guardConfig = static::config()->get("guards.{$name}", []);
             $storage = static::storage($guardConfig['storage'] ?? 'memory');
-            
+
             // 创建Builder和Parser实例
             $builder = new Builder($guardConfig);
             $parser = new Parser($guardConfig);
-            
+
             // 根据驱动类型创建守卫
             switch ($guardConfig['driver'] ?? 'sso') {
                 case 'mlo':
@@ -121,10 +121,10 @@ class KodeJwt
                     break;
             }
         }
-        
+
         return static::$guards[$name];
     }
-    
+
     /**
      * 快速签发Token
      */
@@ -132,7 +132,7 @@ class KodeJwt
     {
         return static::guard($guard)->issue($payload);
     }
-    
+
     /**
      * 快速验证Token
      */
@@ -140,7 +140,7 @@ class KodeJwt
     {
         return static::guard($guard)->authenticate($token);
     }
-    
+
     /**
      * 快速刷新Token
      */
@@ -148,7 +148,7 @@ class KodeJwt
     {
         return static::guard($guard)->refresh($token);
     }
-    
+
     /**
      * 快速注销Token
      */
@@ -156,7 +156,7 @@ class KodeJwt
     {
         return static::guard($guard)->invalidate($token);
     }
-    
+
     /**
      * 清理过期的Token
      */
@@ -164,7 +164,7 @@ class KodeJwt
     {
         return static::storage($storage)->cleanExpired();
     }
-    
+
     /**
      * 获取存储统计信息
      */
@@ -172,7 +172,7 @@ class KodeJwt
     {
         return static::storage($storage)->getStats();
     }
-    
+
     /**
      * 获取Token管理器
      */
@@ -185,7 +185,7 @@ class KodeJwt
             static::config()
         );
     }
-    
+
     /**
      * 获取用户的所有活跃Token
      */
@@ -193,7 +193,7 @@ class KodeJwt
     {
         return static::tokenManager($guard)->getUserTokens($uid, $platform);
     }
-    
+
     /**
      * 强制注销用户的所有Token
      */
@@ -201,7 +201,7 @@ class KodeJwt
     {
         return static::tokenManager($guard)->revokeUserTokens($uid, $platform);
     }
-    
+
     /**
      * 检查Token是否有效
      */
@@ -209,7 +209,7 @@ class KodeJwt
     {
         return static::tokenManager($guard)->isTokenValid($token);
     }
-    
+
     /**
      * 获取Token信息
      */

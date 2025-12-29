@@ -18,7 +18,7 @@ class MloGuard extends BaseGuard
     ) {
         parent::__construct($storage, $builder, $parser, $eventDispatcher, $config);
     }
-    
+
     /**
      * 检查Token是否唯一（多点登录总是返回true）
      */
@@ -27,7 +27,7 @@ class MloGuard extends BaseGuard
         // 多点登录不需要检查唯一性
         return true;
     }
-    
+
     /**
      * 注册Token（多点登录不需要特殊处理）
      */

@@ -6,6 +6,19 @@ use Kode\Jwt\Contract\Arrayable;
 
 final readonly class Payload implements Arrayable
 {
+    /**
+     * Payload构造函数
+     *
+     * @param int $uid 用户唯一标识
+     * @param string $username 用户名
+     * @param string $platform 平台标识
+     * @param int $exp 过期时间戳
+     * @param int $iat 签发时间戳
+     * @param string $jti JWT唯一标识
+     * @param array<string>|null $roles 角色列表
+     * @param array<string>|null $perms 权限列表
+     * @param array<string, mixed> $custom 自定义数据
+     */
     public function __construct(
         public int $uid,
         public string $username,
@@ -16,7 +29,8 @@ final readonly class Payload implements Arrayable
         public ?array $roles = null,
         public ?array $perms = null,
         public array $custom = []
-    ) {}
+    ) {
+    }
 
     public function toArray(): array
     {
@@ -25,8 +39,18 @@ final readonly class Payload implements Arrayable
 
     /**
      * 从数组创建Payload实例
-     * 
-     * @param array $data 包含Payload数据的数组
+     *
+     * @param array{
+     *     uid: int|string,
+     *     username: string,
+     *     platform: string,
+     *     exp: int|string,
+     *     iat: int|string,
+     *     jti: string,
+     *     roles?: array<string>,
+     *     perms?: array<string>,
+     *     custom?: array<string, mixed>
+     * } $data 包含Payload数据的数组
      * @return static
      * @throws \InvalidArgumentException 当必需字段缺失时抛出异常
      */
@@ -55,16 +79,16 @@ final readonly class Payload implements Arrayable
 
     /**
      * 创建一个包含自定义数据的Payload实例
-     * 
+     *
      * @param int $uid 用户ID
      * @param string $username 用户名
      * @param string $platform 平台标识
      * @param int $exp 过期时间戳
      * @param int $iat 签发时间戳
      * @param string $jti JWT ID
-     * @param array|null $roles 用户角色列表
-     * @param array|null $perms 用户权限列表
-     * @param array|string|null $customData 自定义数据，可以是数组或加密字符串
+     * @param array<string>|null $roles 用户角色列表
+     * @param array<string>|null $perms 用户权限列表
+     * @param array<string, mixed>|string|null $customData 自定义数据，可以是数组或加密字符串
      * @return static
      */
     public static function create(
@@ -79,7 +103,7 @@ final readonly class Payload implements Arrayable
         array|string|null $customData = null
     ): static {
         $custom = [];
-        
+
         // 处理自定义数据
         if (is_string($customData)) {
             // 如果是字符串，将其存储为加密数据
@@ -88,7 +112,7 @@ final readonly class Payload implements Arrayable
             // 如果是数组，直接合并到custom字段
             $custom = $customData;
         }
-        
+
         return new static(
             $uid,
             $username,
@@ -115,11 +139,20 @@ final readonly class Payload implements Arrayable
      */
     public function isNotBefore(): bool
     {
-        return isset($this->nbf) && time() < $this->nbf;
+        $nbf = $this->custom['nbf'] ?? null;
+        return isset($nbf) && is_int($nbf) && time() < $nbf;
     }
-    
+
     /**
      * 获取用户信息数组
+     *
+     * @return array{
+     *     uid: int,
+     *     username: string,
+     *     platform: string,
+     *     roles?: array<string>|null,
+     *     perms?: array<string>|null
+     * }
      */
     public function getUserInfo(): array
     {
@@ -131,10 +164,10 @@ final readonly class Payload implements Arrayable
             'perms' => $this->perms,
         ];
     }
-    
+
     /**
      * 获取自定义数据
-     * 
+     *
      * @param string $key 自定义数据键名
      * @param mixed $default 默认值
      * @return mixed
@@ -143,20 +176,20 @@ final readonly class Payload implements Arrayable
     {
         return $this->custom[$key] ?? $default;
     }
-    
+
     /**
      * 获取所有自定义数据
-     * 
-     * @return array
+     *
+     * @return array<string, mixed>
      */
     public function getCustomData(): array
     {
         return $this->custom;
     }
-    
+
     /**
      * 检查是否存在指定的自定义数据
-     * 
+     *
      * @param string $key 自定义数据键名
      * @return bool
      */
@@ -175,7 +208,7 @@ final readonly class Payload implements Arrayable
 
     /**
      * 检查用户是否具有指定角色
-     * 
+     *
      * @param string $role 角色名称
      * @return bool
      */
@@ -186,7 +219,7 @@ final readonly class Payload implements Arrayable
 
     /**
      * 检查用户是否具有指定权限
-     * 
+     *
      * @param string $permission 权限名称
      * @return bool
      */
@@ -202,20 +235,20 @@ final readonly class Payload implements Arrayable
     {
         return $this->uid . ':' . $this->platform;
     }
-    
+
     /**
      * 获取加密的自定义数据
-     * 
+     *
      * @return string|null
      */
     public function getEncryptedData(): ?string
     {
         return $this->custom['encrypted_data'] ?? null;
     }
-    
+
     /**
      * 检查是否存在加密的自定义数据
-     * 
+     *
      * @return bool
      */
     public function hasEncryptedData(): bool

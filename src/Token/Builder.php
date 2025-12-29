@@ -8,25 +8,39 @@ use Kode\Jwt\Exception\JwtException;
 
 class Builder
 {
+    /**
+     * @var array<string, mixed>
+     */
     protected array $claims = [];
+    /**
+     * @var array<string, mixed>
+     */
     protected array $headers = [
         'typ' => 'JWT',
         'alg' => 'HS256'
     ];
     protected string $secret;
+    /**
+     * @var array<string, mixed>
+     */
     protected array $config;
-    
+
+    /**
+     * 构造函数
+     *
+     * @param array<string, mixed> $config 配置数组
+     */
     public function __construct(array $config = [])
     {
         $this->config = $config;
         $this->secret = $config['secret'] ?? '';
-        
+
         // 设置算法
         if (isset($config['algo'])) {
             $this->headers['alg'] = $config['algo'];
         }
     }
-    
+
     /**
      * 设置头部信息
      */
@@ -35,7 +49,7 @@ class Builder
         $this->headers[$key] = $value;
         return $this;
     }
-    
+
     /**
      * 设置声明
      */
@@ -44,7 +58,7 @@ class Builder
         $this->claims[$key] = $value;
         return $this;
     }
-    
+
     /**
      * 批量设置声明
      */
@@ -53,7 +67,7 @@ class Builder
         $this->claims = array_merge($this->claims, $claims);
         return $this;
     }
-    
+
     /**
      * 设置主题
      */
@@ -61,7 +75,7 @@ class Builder
     {
         return $this->setClaim('sub', $subject);
     }
-    
+
     /**
      * 设置受众
      */
@@ -69,7 +83,7 @@ class Builder
     {
         return $this->setClaim('aud', $audience);
     }
-    
+
     /**
      * 设置过期时间
      */
@@ -77,7 +91,7 @@ class Builder
     {
         return $this->setClaim('exp', $expiration);
     }
-    
+
     /**
      * 设置生效时间
      */
@@ -85,7 +99,7 @@ class Builder
     {
         return $this->setClaim('nbf', $notBefore);
     }
-    
+
     /**
      * 设置签发时间
      */
@@ -93,7 +107,7 @@ class Builder
     {
         return $this->setClaim('iat', $issuedAt);
     }
-    
+
     /**
      * 设置签发者
      */
@@ -101,7 +115,7 @@ class Builder
     {
         return $this->setClaim('iss', $issuer);
     }
-    
+
     /**
      * 设置JWT ID
      */
@@ -109,7 +123,7 @@ class Builder
     {
         return $this->setClaim('jti', $id);
     }
-    
+
     /**
      * 从Arrayable对象设置声明
      */
@@ -117,7 +131,7 @@ class Builder
     {
         return $this->setClaims($arrayable->toArray());
     }
-    
+
     /**
      * 从Payload对象设置声明
      */
@@ -125,7 +139,7 @@ class Builder
     {
         return $this->setClaims($payload->toArray());
     }
-    
+
     /**
      * 设置用户ID
      */
@@ -133,7 +147,7 @@ class Builder
     {
         return $this->setClaim('uid', $uid);
     }
-    
+
     /**
      * 设置用户名
      */
@@ -141,7 +155,7 @@ class Builder
     {
         return $this->setClaim('username', $username);
     }
-    
+
     /**
      * 设置平台
      */
@@ -149,31 +163,40 @@ class Builder
     {
         return $this->setClaim('platform', $platform);
     }
-    
+
     /**
      * 设置角色
+     *
+     * @param array<string> $roles 角色数组
+     * @return $this
      */
     public function setRoles(array $roles): self
     {
         return $this->setClaim('roles', $roles);
     }
-    
+
     /**
      * 设置权限
+     *
+     * @param array<string> $permissions 权限数组
+     * @return $this
      */
     public function setPermissions(array $permissions): self
     {
         return $this->setClaim('perms', $permissions);
     }
-    
+
     /**
      * 设置自定义数据
+     *
+     * @param array<string, mixed> $custom 自定义数据
+     * @return $this
      */
     public function setCustom(array $custom): self
     {
         return $this->setClaim('custom', $custom);
     }
-    
+
     /**
      * 从Jsonable对象设置声明
      */
@@ -185,7 +208,7 @@ class Builder
         }
         return $this;
     }
-    
+
     /**
      * 生成Token
      */
@@ -195,43 +218,46 @@ class Builder
         if (!isset($this->claims['iat'])) {
             $this->setIssuedAt(time());
         }
-        
+
         if (!isset($this->claims['exp'])) {
             throw new JwtException('Expiration time (exp) is required');
         }
-        
+
         if (!isset($this->claims['jti'])) {
             $this->setId(uniqid('jwt_', true));
         }
-        
+
         // 编码头部
         $header = $this->encodePart($this->headers);
-        
+
         // 编码载荷
         $payload = $this->encodePart($this->claims);
-        
+
         // 创建签名
         $signature = $this->createSignature("{$header}.{$payload}");
-        
+
         return "{$header}.{$payload}.{$signature}";
     }
-    
+
     /**
      * 编码部分
+     *
+     * @param array<string, mixed> $data 要编码的数据
+     * @return string 编码后的字符串
      */
     protected function encodePart(array $data): string
     {
         $json = json_encode($data);
         return rtrim(strtr(base64_encode($json), '+/', '-_'), '=');
     }
-    
+
     /**
      * 创建签名
      */
     protected function createSignature(string $data): string
     {
         $algorithm = $this->headers['alg'] ?? 'HS256';
-        
+
         switch ($algorithm) {
             case 'HS256':
                 return $this->signHmac($data, 'sha256');
@@ -249,7 +275,7 @@ class Builder
                 throw new JwtException("Unsupported algorithm: {$algorithm}");
         }
     }
-    
+
     /**
      * HMAC签名
      */
@@ -258,41 +284,47 @@ class Builder
         if (empty($this->secret)) {
             throw new JwtException('Secret is required for HMAC algorithms');
         }
-        
+
         $hash = hash_hmac($algorithm, $data, $this->secret, true);
         return rtrim(strtr(base64_encode($hash), '+/', '-_'), '=');
     }
-    
+
     /**
      * RSA签名
+     *
+     * @throws JwtException 当私钥无效时抛出异常
      */
     protected function signRsa(string $data, string $algorithm): string
     {
         $privateKey = $this->config['private_key'] ?? null;
-        
+
         if (empty($privateKey)) {
             throw new JwtException('Private key is required for RSA algorithms');
         }
-        
+
         // 如果是文件路径，读取私钥
         if (is_file($privateKey)) {
-            $privateKey = file_get_contents($privateKey);
+            $privateKeyContent = file_get_contents($privateKey);
+            if ($privateKeyContent === false) {
+                throw new JwtException('Failed to read private key file');
+            }
+            $privateKey = $privateKeyContent;
         }
-        
+
         $key = openssl_pkey_get_private($privateKey);
-        
+
         if (!$key) {
             throw new JwtException('Invalid private key');
         }
-        
+
         $signature = '';
         $result = openssl_sign($data, $signature, $key, $algorithm);
         openssl_free_key($key);
-        
+
         if (!$result) {
             throw new JwtException('Failed to create RSA signature');
         }
-        
+
         return rtrim(strtr(base64_encode($signature), '+/', '-_'), '=');
     }
 }

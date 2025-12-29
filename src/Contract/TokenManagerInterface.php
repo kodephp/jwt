@@ -35,12 +35,12 @@ interface TokenManagerInterface
      * 注册Token
      */
     public function register(string $uid, string $platform, string $jti): void;
-    
+
     /**
      * 获取存储实例
      */
     public function getStorage(): StorageInterface;
-    
+
     /**
      * 获取配置
      */

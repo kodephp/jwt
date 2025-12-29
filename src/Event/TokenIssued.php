@@ -14,7 +14,7 @@ class TokenIssued
         public readonly \DateTimeImmutable $issuedAt
     ) {
     }
-    
+
     /**
      * 获取用户ID
      */
@@ -22,7 +22,7 @@ class TokenIssued
     {
         return $this->payload->uid;
     }
-    
+
     /**
      * 获取平台
      */
@@ -30,7 +30,7 @@ class TokenIssued
     {
         return $this->payload->platform;
     }
-    
+
     /**
      * 获取用户名
      */
@@ -38,47 +38,53 @@ class TokenIssued
     {
         return $this->payload->username;
     }
-    
+
     /**
      * 获取角色
+     *
+     * @return array<string>
      */
     public function getRoles(): array
     {
         return $this->payload->roles ?? [];
     }
-    
+
     /**
      * 获取权限
+     *
+     * @return array<string>
      */
     public function getPermissions(): array
     {
         return $this->payload->perms ?? [];
     }
-    
+
     /**
      * 检查是否有指定角色
      */
     public function hasRole(string $role): bool
     {
-        return in_array($role, $this->getRoles());
+        return in_array($role, $this->getRoles(), true);
     }
-    
+
     /**
      * 检查是否有指定权限
      */
     public function hasPermission(string $permission): bool
     {
-        return in_array($permission, $this->getPermissions());
+        return in_array($permission, $this->getPermissions(), true);
     }
-    
+
     /**
      * 获取自定义数据
+     *
+     * @return array<string, mixed>
      */
     public function getCustomData(): array
     {
         return $this->payload->custom ?? [];
     }
-    
+
     /**
      * 获取过期时间
      */
@@ -86,7 +92,7 @@ class TokenIssued
     {
         return $this->issuedAt->setTimestamp($this->payload->exp);
     }
-    
+
     /**
      * 获取Token剩余有效期（秒）
      */
@@ -94,11 +100,11 @@ class TokenIssued
     {
         $now = new \DateTimeImmutable();
         $expiresAt = $this->getExpiresAt();
-        
+
         if ($now > $expiresAt) {
             return 0;
         }
-        
+
         return $expiresAt->getTimestamp() - $now->getTimestamp();
     }
 }

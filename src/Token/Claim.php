@@ -24,12 +24,12 @@ class Claim
             case self::AUDIENCE:
             case self::JWT_ID:
                 return is_string($value) && !empty($value);
-                
+
             case self::EXPIRATION_TIME:
             case self::NOT_BEFORE:
             case self::ISSUED_AT:
                 return is_int($value) && $value > 0;
-                
+
             default:
                 // 自定义声明
                 return true;
@@ -50,10 +50,10 @@ class Claim
             self::ISSUED_AT => 'Issued At',
             self::JWT_ID => 'JWT ID'
         ];
-        
+
         return $descriptions[$name] ?? $name;
     }
-    
+
     /**
      * 检查声明是否为时间类型
      */
@@ -65,7 +65,7 @@ class Claim
             self::ISSUED_AT
         ]);
     }
-    
+
     /**
      * 格式化时间声明值
      */

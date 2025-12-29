@@ -9,24 +9,24 @@ interface GuardInterface
     /**
      * 生成Token
      *
-     * @param Payload $payload
-     * @return array
+     * @param Payload $payload Payload实例
+     * @return array<string, mixed>
      */
     public function issue(Payload $payload): array;
 
     /**
      * 验证Token
      *
-     * @param string $token
-     * @return Payload
+     * @param string $token Token字符串
+     * @return Payload 验证通过的Payload实例
      */
     public function authenticate(string $token): Payload;
 
     /**
      * 刷新Token
      *
-     * @param string $token
-     * @return array
+     * @param string $token 旧Token字符串
+     * @return array<string, mixed> 新的Token数组
      */
     public function refresh(string $token): array;
 

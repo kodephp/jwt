@@ -18,7 +18,7 @@ class SsoGuard extends BaseGuard
     ) {
         parent::__construct($storage, $builder, $parser, $eventDispatcher, $config);
     }
-    
+
     /**
      * 检查是否唯一登录
      */
@@ -27,16 +27,16 @@ class SsoGuard extends BaseGuard
         // 对于SSO，检查是否已存在该用户的Token
         $key = "sso:{$uid}:{$platform}";
         $existing = $this->storage->get($key);
-        
+
         if ($existing) {
             // 如果存在，将旧Token加入黑名单
             $this->storage->blacklist($existing);
             $this->storage->delete($key);
         }
-        
+
         return true;
     }
-    
+
     /**
      * 注册Token
      */
@@ -44,7 +44,7 @@ class SsoGuard extends BaseGuard
     {
         $key = "sso:{$uid}:{$platform}";
         $ttl = $this->config['ttl'] ?? 3600;
-        
+
         // 存储当前Token的JTI
         $this->storage->set($key, $jti, $ttl);
     }

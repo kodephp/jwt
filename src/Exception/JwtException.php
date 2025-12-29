@@ -6,7 +6,7 @@ class JwtException extends \Exception
 {
     protected ?string $token = null;
     protected ?string $jti = null;
-    
+
     public function __construct(
         string $message = "",
         int $code = 0,
@@ -18,7 +18,7 @@ class JwtException extends \Exception
         $this->token = $token;
         $this->jti = $jti;
     }
-    
+
     /**
      * 获取Token
      */
@@ -26,7 +26,7 @@ class JwtException extends \Exception
     {
         return $this->token;
     }
-    
+
     /**
      * 获取JTI
      */
@@ -34,7 +34,7 @@ class JwtException extends \Exception
     {
         return $this->jti;
     }
-    
+
     /**
      * 设置Token
      */
@@ -43,7 +43,7 @@ class JwtException extends \Exception
         $this->token = $token;
         return $this;
     }
-    
+
     /**
      * 设置JTI
      */

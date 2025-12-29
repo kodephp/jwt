@@ -6,15 +6,26 @@ use Kode\Jwt\Contract\StorageInterface;
 
 class MemoryStorage implements StorageInterface
 {
+    /**
+     * @var array<string, array{value: mixed, expires_at: int}>
+     */
     protected array $storage = [];
+    /**
+     * @var array<string, int>
+     */
     protected array $blacklist = [];
     protected int $limit;
-    
+
+    /**
+     * 构造函数
+     *
+     * @param array<string, mixed> $config 配置数组
+     */
     public function __construct(array $config = [])
     {
         $this->limit = $config['limit'] ?? 10000;
     }
-    
+
     /**
      * 设置键值对
      */
@@ -24,15 +35,15 @@ class MemoryStorage implements StorageInterface
         if (count($this->storage) >= $this->limit) {
             array_shift($this->storage);
         }
-        
+
         $this->storage[$key] = [
             'value' => $value,
             'expires_at' => $ttl > 0 ? time() + $ttl : 0,
         ];
-        
+
         return true;
     }
-    
+
     /**
      * 获取键对应的值
      */
@@ -41,18 +52,18 @@ class MemoryStorage implements StorageInterface
         if (!isset($this->storage[$key])) {
             return $default;
         }
-        
+
         $item = $this->storage[$key];
-        
+
         // 检查是否过期
         if ($item['expires_at'] > 0 && time() > $item['expires_at']) {
             unset($this->storage[$key]);
             return $default;
         }
-        
+
         return $item['value'];
     }
-    
+
     /**
      * 删除键
      */
@@ -61,7 +72,7 @@ class MemoryStorage implements StorageInterface
         unset($this->storage[$key]);
         return true;
     }
-    
+
     /**
      * 检查键是否存在
      */
@@ -69,7 +80,7 @@ class MemoryStorage implements StorageInterface
     {
         return isset($this->storage[$key]);
     }
-    
+
     /**
      * 批量设置键值对
      */
@@ -78,24 +89,24 @@ class MemoryStorage implements StorageInterface
         foreach ($values as $key => $value) {
             $this->set($key, $value, $ttl);
         }
-        
+
         return true;
     }
-    
+
     /**
      * 批量获取键值对
      */
     public function getMultiple(array $keys, mixed $default = null): array
     {
         $results = [];
-        
+
         foreach ($keys as $key) {
             $results[$key] = $this->get($key, $default);
         }
-        
+
         return $results;
     }
-    
+
     /**
      * 批量删除键
      */
@@ -104,10 +115,10 @@ class MemoryStorage implements StorageInterface
         foreach ($keys as $key) {
             $this->delete($key);
         }
-        
+
         return true;
     }
-    
+
     /**
      * 将键加入黑名单
      */
@@ -116,7 +127,7 @@ class MemoryStorage implements StorageInterface
         $this->blacklist[$jti] = time() + $ttl;
         return true;
     }
-    
+
     /**
      * 检查键是否在黑名单中
      */
@@ -125,16 +136,16 @@ class MemoryStorage implements StorageInterface
         if (!isset($this->blacklist[$jti])) {
             return false;
         }
-        
+
         // 检查是否过期
         if (time() > $this->blacklist[$jti]) {
             unset($this->blacklist[$jti]);
             return false;
         }
-        
+
         return true;
     }
-    
+
     /**
      * 清理过期项
      */
@@ -142,7 +153,7 @@ class MemoryStorage implements StorageInterface
     {
         $count = 0;
         $now = time();
-        
+
         // 清理过期的存储项
         foreach ($this->storage as $key => $item) {
             if ($item['expires_at'] > 0 && $now > $item['expires_at']) {
@@ -150,7 +161,7 @@ class MemoryStorage implements StorageInterface
                 $count++;
             }
         }
-        
+
         // 清理过期的黑名单项
         foreach ($this->blacklist as $jti => $expiresAt) {
             if ($now > $expiresAt) {
@@ -158,10 +169,10 @@ class MemoryStorage implements StorageInterface
                 $count++;
             }
         }
-        
+
         return true;
     }
-    
+
     /**
      * 获取存储统计信息
      */

@@ -41,7 +41,7 @@ interface StorageInterface
     /**
      * 批量设置键值对
      *
-     * @param array $values
+     * @param array<string, mixed> $values 键值对数组
      * @param int $ttl 过期时间（秒）
      * @return bool
      */
@@ -50,16 +50,16 @@ interface StorageInterface
     /**
      * 批量获取键值对
      *
-     * @param array $keys
-     * @param mixed $default
-     * @return array
+     * @param array<string> $keys 键数组
+     * @param mixed $default 默认值
+     * @return array<string|int, mixed>
      */
     public function getMultiple(array $keys, mixed $default = null): array;
 
     /**
      * 批量删除键
      *
-     * @param array $keys
+     * @param array<string> $keys 键数组
      * @return bool
      */
     public function deleteMultiple(array $keys): bool;
@@ -67,7 +67,7 @@ interface StorageInterface
     /**
      * 获取存储统计信息
      *
-     * @return array
+     * @return array<string, mixed>
      */
     public function getStats(): array;
 

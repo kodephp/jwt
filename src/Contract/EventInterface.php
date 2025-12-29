@@ -14,7 +14,7 @@ interface EventInterface
     /**
      * 获取事件数据
      *
-     * @return array
+     * @return array<string, mixed>
      */
     public function getData(): array;
 

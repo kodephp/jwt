@@ -9,7 +9,7 @@ abstract class BaseEvent
         public readonly array $data = []
     ) {
     }
-    
+
     /**
      * 获取事件名称
      */
@@ -17,15 +17,17 @@ abstract class BaseEvent
     {
         return $this->name;
     }
-    
+
     /**
      * 获取事件数据
+     *
+     * @return array<string, mixed>
      */
     public function getData(): array
     {
         return $this->data;
     }
-    
+
     /**
      * 获取事件数据中的指定键值
      */
@@ -33,7 +35,7 @@ abstract class BaseEvent
     {
         return $this->data[$key] ?? $default;
     }
-    
+
     /**
      * 检查事件数据中是否存在指定键
      */
@@ -41,7 +43,7 @@ abstract class BaseEvent
     {
         return array_key_exists($key, $this->data);
     }
-    
+
     /**
      * 将事件转换为数组
      */
