@@ -9,8 +9,8 @@ final readonly class Payload implements Arrayable
     /**
      * Payload构造函数
      *
-     * @param int $uid 用户唯一标识
-     * @param string $username 用户名
+     * @param int|string|null $uid 用户唯一标识（支持雪花ID等字符串类型）
+     * @param string|null $username 用户名
      * @param string $platform 平台标识
      * @param int $exp 过期时间戳
      * @param int $iat 签发时间戳
@@ -20,8 +20,8 @@ final readonly class Payload implements Arrayable
      * @param array<string, mixed> $custom 自定义数据
      */
     public function __construct(
-        public int $uid,
-        public string $username,
+        public int|string|null $uid = null,
+        public ?string $username = null,
         public string $platform,
         public int $exp,
         public int $iat,
@@ -41,8 +41,8 @@ final readonly class Payload implements Arrayable
      * 从数组创建Payload实例
      *
      * @param array{
-     *     uid: int|string,
-     *     username: string,
+     *     uid?: int|string,
+     *     username?: string,
      *     platform: string,
      *     exp: int|string,
      *     iat: int|string,
@@ -57,7 +57,7 @@ final readonly class Payload implements Arrayable
     public static function fromArray(array $data): static
     {
         // 验证必需字段
-        $requiredFields = ['uid', 'username', 'platform', 'exp', 'iat', 'jti'];
+        $requiredFields = ['platform', 'exp', 'iat', 'jti'];
         foreach ($requiredFields as $field) {
             if (!isset($data[$field])) {
                 throw new \InvalidArgumentException("Missing required field: {$field}");
@@ -65,8 +65,8 @@ final readonly class Payload implements Arrayable
         }
 
         return new static(
-            (int) $data['uid'],
-            (string) $data['username'],
+            $data['uid'] ?? null,
+            $data['username'] ?? null,
             (string) $data['platform'],
             (int) $data['exp'],
             (int) $data['iat'],
@@ -80,8 +80,8 @@ final readonly class Payload implements Arrayable
     /**
      * 创建一个包含自定义数据的Payload实例
      *
-     * @param int $uid 用户ID
-     * @param string $username 用户名
+     * @param int|string|null $uid 用户ID（支持雪花ID等字符串类型）
+     * @param string|null $username 用户名
      * @param string $platform 平台标识
      * @param int $exp 过期时间戳
      * @param int $iat 签发时间戳
@@ -92,8 +92,8 @@ final readonly class Payload implements Arrayable
      * @return static
      */
     public static function create(
-        int $uid,
-        string $username,
+        int|string|null $uid = null,
+        ?string $username = null,
         string $platform,
         int $exp,
         int $iat,
@@ -104,12 +104,9 @@ final readonly class Payload implements Arrayable
     ): static {
         $custom = [];
 
-        // 处理自定义数据
         if (is_string($customData)) {
-            // 如果是字符串，将其存储为加密数据
             $custom['encrypted_data'] = $customData;
         } elseif (is_array($customData)) {
-            // 如果是数组，直接合并到custom字段
             $custom = $customData;
         }
 
@@ -122,6 +119,64 @@ final readonly class Payload implements Arrayable
             $jti,
             $roles,
             $perms,
+            $custom
+        );
+    }
+
+    /**
+     * 快速创建Payload（自动处理标准字段和TTL配置）
+     *
+     * @param array<string, mixed> $userData 用户数据：uid, username, platform, roles, perms, encrypted_data
+     * @param array<string, mixed> $config JWT配置（可选，默认从KodeJwt获取）
+     * @return static
+     *
+     * 示例：
+     *   // 使用加密数据
+     *   $payload = Payload::quickCreate([
+     *       'uid' => 'snowflake_id',
+     *       'platform' => 'app',
+     *       'encrypted_data' => $encryptedUserInfo
+     *   ]);
+     *
+     *   // 使用普通数据
+     *   $payload = Payload::quickCreate([
+     *       'uid' => 123,
+     *       'username' => 'john_doe',
+     *       'platform' => 'web',
+     *       'roles' => ['admin'],
+     *       'perms' => ['read', 'write']
+     *   ]);
+     */
+    public static function quickCreate(array $userData, array $config = []): static
+    {
+        $now = time();
+
+        $ttl = $config['ttl'] ?? 1440;
+
+        if (isset($config['refresh_ttl'])) {
+            $ttl = $config['refresh_ttl'];
+        }
+
+        $exp = $now + ($ttl * 60);
+        $jti = uniqid('jwt_', true);
+
+        $custom = [];
+
+        if (isset($userData['encrypted_data']) && is_string($userData['encrypted_data'])) {
+            $custom['encrypted_data'] = $userData['encrypted_data'];
+        } elseif (isset($userData['custom']) && is_array($userData['custom'])) {
+            $custom = $userData['custom'];
+        }
+
+        return new static(
+            $userData['uid'] ?? null,
+            $userData['username'] ?? null,
+            $userData['platform'] ?? 'default',
+            $exp,
+            $now,
+            $jti,
+            $userData['roles'] ?? null,
+            $userData['perms'] ?? null,
             $custom
         );
     }
@@ -147,8 +202,8 @@ final readonly class Payload implements Arrayable
      * 获取用户信息数组
      *
      * @return array{
-     *     uid: int,
-     *     username: string,
+     *     uid?: int|string|null,
+     *     username?: string|null,
      *     platform: string,
      *     roles?: array<string>|null,
      *     perms?: array<string>|null
@@ -156,13 +211,13 @@ final readonly class Payload implements Arrayable
      */
     public function getUserInfo(): array
     {
-        return [
+        return array_filter([
             'uid' => $this->uid,
             'username' => $this->username,
             'platform' => $this->platform,
             'roles' => $this->roles,
             'perms' => $this->perms,
-        ];
+        ], fn($value) => $value !== null);
     }
 
     /**
@@ -196,6 +251,17 @@ final readonly class Payload implements Arrayable
     public function hasCustom(string $key): bool
     {
         return array_key_exists($key, $this->custom);
+    }
+
+    /**
+     * 设置加密数据
+     *
+     * @param string $encryptedData 加密后的数据
+     * @return void
+     */
+    public function setEncryptedData(string $encryptedData): void
+    {
+        $this->custom['encrypted_data'] = $encryptedData;
     }
 
     /**
@@ -233,7 +299,7 @@ final readonly class Payload implements Arrayable
      */
     public function getUserIdentifier(): string
     {
-        return $this->uid . ':' . $this->platform;
+        return "{$this->uid}:{$this->platform}";
     }
 
     /**

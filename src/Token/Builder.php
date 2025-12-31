@@ -142,8 +142,11 @@ class Builder
 
     /**
      * 设置用户ID
+     *
+     * @param int|string $uid 用户ID（支持雪花ID等字符串类型）
+     * @return $this
      */
-    public function setUid(int $uid): self
+    public function setUid(int|string $uid): self
     {
         return $this->setClaim('uid', $uid);
     }
@@ -319,7 +322,6 @@ class Builder
 
         $signature = '';
         $result = openssl_sign($data, $signature, $key, $algorithm);
-        openssl_free_key($key);
 
         if (!$result) {
             throw new JwtException('Failed to create RSA signature');

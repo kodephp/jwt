@@ -1,0 +1,138 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+$basePath = getcwd();
+
+if (file_exists($basePath . '/vendor/autoload.php')) {
+    require_once $basePath . '/vendor/autoload.php';
+} elseif (file_exists(__DIR__ . '/../vendor/autoload.php')) {
+    require_once __DIR__ . '/../vendor/autoload.php';
+} else {
+    echo "❌ 未找到 Composer 自动加载文件。请先运行: composer install\n";
+    exit(1);
+}
+
+use Kode\Jwt\Console\InstallCommand;
+use Kode\Jwt\Console\KeyGenerateCommand;
+use Kode\Jwt\KodeJwt;
+
+KodeJwt::detectAndLoadConfig();
+
+$args = $argv;
+
+$command = $args[1] ?? 'help';
+
+$commands = [
+    'install' => [
+        'alias' => ['i'],
+        'description' => '安装 JWT 配置文件并生成密钥',
+        'usage' => 'php jwt install [选项]',
+        'options' => [
+            '--config-only' => '仅发布配置文件',
+            '--key-only' => '仅生成密钥',
+            '--force' => '强制覆盖现有文件',
+            '--platform' => '指定默认平台 (默认: web)',
+        ],
+    ],
+    'key' => [
+        'alias' => ['k'],
+        'description' => '生成 JWT 密钥',
+        'usage' => 'php jwt key [算法] [输出方式]',
+        'options' => [
+            'rsa' => '生成 RSA 密钥对 (默认)',
+            'hmac' => '生成 HMAC 密钥',
+            'stdout' => '输出到标准输出',
+            'file' => '保存到文件 (默认)',
+            '--force' => '强制覆盖现有文件',
+        ],
+    ],
+    'help' => [
+        'alias' => ['h', '--help', '-h'],
+        'description' => '显示帮助信息',
+        'usage' => 'php jwt help',
+    ],
+];
+
+function displayHelp(array $commands): void
+{
+    echo "╔══════════════════════════════════════════════════════════════╗\n";
+    echo "║                    JWT Token Console Tool                    ║\n";
+    echo "╚══════════════════════════════════════════════════════════════╝\n\n";
+
+    echo "用法:\n";
+    echo "  php jwt <命令> [选项]\n\n";
+
+    echo "可用命令:\n\n";
+
+    foreach ($commands as $cmd => $info) {
+        $alias = $info['alias'] ?? [];
+        $aliasStr = !empty($alias) ? ' (' . implode(', ', $alias) . ')' : '';
+
+        echo "  {$cmd}{$aliasStr}\n";
+        echo "    描述: {$info['description']}\n";
+        echo "    用法: {$info['usage']}\n";
+
+        if (isset($info['options'])) {
+            echo "    选项:\n";
+            foreach ($info['options'] as $opt => $optDesc) {
+                echo "      {$opt} - {$optDesc}\n";
+            }
+        }
+
+        echo "\n";
+    }
+
+    echo "示例:\n";
+    echo "  # 安装配置和密钥\n";
+    echo "  php jwt install\n\n";
+    echo "  # 仅生成 RSA 密钥对\n";
+    echo "  php jwt key rsa\n\n";
+    echo "  # 生成 HMAC 密钥并输出\n";
+    echo "  php jwt key hmac stdout\n\n";
+    echo "  # 发布配置文件\n";
+    echo "  php jwt install --config-only\n";
+}
+
+function resolveCommand(string $command, array $commands): ?string
+{
+    foreach ($commands as $cmd => $info) {
+        if ($command === $cmd) {
+            return $cmd;
+        }
+        if (isset($info['alias']) && in_array($command, $info['alias'], true)) {
+            return $cmd;
+        }
+    }
+    return null;
+}
+
+$resolvedCommand = resolveCommand($command, $commands);
+
+if ($resolvedCommand === null) {
+    echo "❌ 未知命令: {$command}\n\n";
+    displayHelp($commands);
+    exit(1);
+}
+
+switch ($resolvedCommand) {
+    case 'install':
+        $exitCode = InstallCommand::run($args, $basePath);
+        break;
+
+    case 'key':
+        $exitCode = KeyGenerateCommand::run($args, $basePath);
+        break;
+
+    case 'help':
+        displayHelp($commands);
+        $exitCode = 0;
+        break;
+
+    default:
+        displayHelp($commands);
+        $exitCode = 0;
+}
+
+exit($exitCode);

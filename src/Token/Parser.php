@@ -2,8 +2,6 @@
 
 namespace Kode\Jwt\Token;
 
-use Kode\Jwt\Contract\Arrayable;
-use Kode\Jwt\Contract\Jsonable;
 use Kode\Jwt\Exception\JwtException;
 use Kode\Jwt\Exception\TokenExpiredException;
 use Kode\Jwt\Exception\TokenInvalidException;
@@ -32,7 +30,7 @@ class Parser
     /**
      * 解析Token
      */
-    public function parse(string $token, string $expectedPlatform = null): Payload
+    public function parse(string $token, ?string $expectedPlatform = null): Payload
     {
         // 分割Token
         $parts = explode('.', $token);
@@ -62,8 +60,8 @@ class Parser
 
         // 创建Payload对象
         return new Payload(
-            uid: $payloadArray['uid'] ?? 0,
-            username: $payloadArray['username'] ?? '',
+            uid: $payloadArray['uid'] ?? null,
+            username: $payloadArray['username'] ?? null,
             platform: $payloadArray['platform'] ?? '',
             exp: $payloadArray['exp'] ?? 0,
             iat: $payloadArray['iat'] ?? 0,
@@ -168,7 +166,6 @@ class Parser
         }
 
         $result = openssl_verify($data, $signature, $key, $algorithm);
-        openssl_free_key($key);
 
         if ($result !== 1) {
             throw new TokenInvalidException('Invalid token signature');

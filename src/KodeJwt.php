@@ -22,14 +22,196 @@ class KodeJwt
     private static ?EventDispatcher $eventDispatcher = null;
     private static ?Builder $builder = null;
     private static ?Parser $parser = null;
+    private static bool $configLoaded = false;
 
     /**
-     * 初始化JWT包
+     * 初始化JWT包并加载用户配置
      */
     public static function init(array $config = []): void
     {
-        static::$configLoader = new ConfigLoader($config);
+        if (!empty($config)) {
+            static::$configLoader = new ConfigLoader($config);
+        } else {
+            static::$configLoader = new ConfigLoader();
+        }
         static::$eventDispatcher = new EventDispatcher();
+        static::$configLoaded = true;
+    }
+
+    /**
+     * 从文件加载配置
+     */
+    public static function loadConfigFromFile(string $path): void
+    {
+        if (!file_exists($path)) {
+            throw new \InvalidArgumentException("配置文件不存在: {$path}");
+        }
+
+        $config = require $path;
+
+        if (!is_array($config)) {
+            throw new \InvalidArgumentException("配置文件必须返回数组: {$path}");
+        }
+
+        static::init($config);
+    }
+
+    /**
+     * 自动检测并加载配置文件
+     *
+     * 支持的常见框架配置路径:
+     * - Laravel: base_path()/config/jwt.php
+     * - Hyperf: BASE_PATH . '/config/jwt.php'
+     * - ThinkPHP: root_path() . 'config/jwt.php'
+     * - Yii2: @app/config/jwt.php
+     * - Symfony: config/jwt.php
+     * - 通用: config/jwt.php, app/config/jwt.php
+     */
+    public static function detectAndLoadConfig(): bool
+    {
+        $basePaths = static::detectFrameworkPaths();
+        $configFiles = ['config/jwt.php', 'app/config/jwt.php', 'config/autoload/jwt.php'];
+
+        foreach ($basePaths as $basePath) {
+            foreach ($configFiles as $configFile) {
+                $fullPath = $basePath . '/' . $configFile;
+                if (file_exists($fullPath)) {
+                    static::loadConfigFromFile($fullPath);
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * 检测当前运行环境可能的框架根目录
+     */
+    private static function detectFrameworkPaths(): array
+    {
+        $paths = [];
+
+        $currentDir = getcwd() ?? dirname(__DIR__);
+        $paths[] = $currentDir;
+
+        $parentDir = dirname($currentDir);
+        if ($parentDir !== $currentDir) {
+            $paths[] = $parentDir;
+        }
+
+        $envPaths = [
+            'LARAVEL_BASE_PATH' => null,
+            'BASE_PATH' => null,
+            'APP_PATH' => null,
+            'YII2_APP_PATH' => null,
+            'APPLICATION_PATH' => null,
+            'ROOT_PATH' => null,
+        ];
+
+        foreach ($envPaths as $envKey => &$value) {
+            $value = getenv($envKey) ?: (isset($_ENV[$envKey]) ? $_ENV[$envKey] : null);
+            if ($value && is_dir($value)) {
+                $paths[] = realpath($value);
+            }
+        }
+
+        return array_unique(array_filter($paths, fn($p) => $p && is_dir($p)));
+    }
+
+    /**
+     * 获取框架类型猜测
+     */
+    public static function getFrameworkType(): string
+    {
+        $basePaths = static::detectFrameworkPaths();
+
+        foreach ($basePaths as $basePath) {
+            if (file_exists($basePath . '/artisan')) {
+                return 'laravel';
+            }
+            if (file_exists($basePath . '/bin/hyperf.php')) {
+                return 'hyperf';
+            }
+            if (file_exists($basePath . '/think')) {
+                return 'thinkphp';
+            }
+            if (file_exists($basePath . '/config/app.php')) {
+                return 'yii2';
+            }
+            if (file_exists($basePath . '/config/services.yaml')) {
+                return 'symfony';
+            }
+        }
+
+        return 'unknown';
+    }
+
+    /**
+     * 创建针对特定框架的配置路径
+     */
+    public static function getFrameworkConfigPath(string $framework, string $filename = 'jwt.php'): string
+    {
+        $basePaths = static::detectFrameworkPaths();
+        $basePath = $basePaths[0] ?? getcwd();
+
+        return match ($framework) {
+            'laravel' => $basePath . '/config/' . $filename,
+            'hyperf' => $basePath . '/config/' . $filename,
+            'thinkphp' => $basePath . '/config/' . $filename,
+            'yii2' => $basePath . '/config/' . $filename,
+            'symfony' => $basePath . '/config/' . $filename,
+            default => $basePath . '/config/' . $filename,
+        };
+    }
+
+    /**
+     * 检查配置是否已加载
+     */
+    public static function isConfigLoaded(): bool
+    {
+        return static::$configLoaded || static::$configLoader !== null;
+    }
+
+    /**
+     * 获取默认配置
+     */
+    public static function getDefaultConfig(): array
+    {
+        return [
+            'defaults' => [
+                'guard' => 'api',
+                'storage' => 'memory',
+            ],
+            'guards' => [
+                'api' => [
+                    'driver' => 'sso',
+                    'storage' => 'memory',
+                    'algo' => 'HS256',
+                    'secret' => 'your-256-bit-secret-key-here',
+                    'ttl' => 3600,
+                    'refresh_ttl' => 604800,
+                    'blacklist_enabled' => true,
+                    'blacklist_ttl' => 604800,
+                    'platform' => null,
+                    'single_login' => false,
+                ],
+            ],
+            'storages' => [
+                'memory' => [
+                    'driver' => 'memory',
+                ],
+                'redis' => [
+                    'driver' => 'redis',
+                    'host' => '127.0.0.1',
+                    'port' => 6379,
+                    'password' => null,
+                    'database' => 0,
+                    'prefix' => 'kode:jwt:',
+                    'ttl' => 0,
+                ],
+            ],
+        ];
     }
 
     /**
