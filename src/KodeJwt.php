@@ -265,7 +265,7 @@ class KodeJwt
     /**
      * 获取存储实例
      */
-    public static function storage(string $name = null): StorageInterface
+    public static function storage(?string $name = null): StorageInterface
     {
         $name = $name ?? static::config()->get('defaults.storage', 'memory');
 
@@ -280,7 +280,7 @@ class KodeJwt
     /**
      * 获取守卫实例
      */
-    public static function guard(string $name = null): GuardInterface
+    public static function guard(?string $name = null): GuardInterface
     {
         $name = $name ?? static::config()->get('defaults.guard', 'api');
 
@@ -310,7 +310,7 @@ class KodeJwt
     /**
      * 快速签发Token
      */
-    public static function issue(Payload $payload, string $guard = null): array
+    public static function issue(Payload $payload, ?string $guard = null): array
     {
         return static::guard($guard)->issue($payload);
     }
@@ -318,7 +318,7 @@ class KodeJwt
     /**
      * 快速验证Token
      */
-    public static function authenticate(string $token, string $guard = null): Payload
+    public static function authenticate(string $token, ?string $guard = null): Payload
     {
         return static::guard($guard)->authenticate($token);
     }
@@ -326,7 +326,7 @@ class KodeJwt
     /**
      * 快速刷新Token
      */
-    public static function refresh(string $token, string $guard = null): array
+    public static function refresh(string $token, ?string $guard = null): array
     {
         return static::guard($guard)->refresh($token);
     }
@@ -334,7 +334,7 @@ class KodeJwt
     /**
      * 快速注销Token
      */
-    public static function invalidate(string $token, string $guard = null): bool
+    public static function invalidate(string $token, ?string $guard = null): bool
     {
         return static::guard($guard)->invalidate($token);
     }
@@ -342,7 +342,7 @@ class KodeJwt
     /**
      * 清理过期的Token
      */
-    public static function cleanExpired(string $storage = null): int
+    public static function cleanExpired(?string $storage = null): int
     {
         return static::storage($storage)->cleanExpired();
     }
@@ -350,7 +350,7 @@ class KodeJwt
     /**
      * 获取存储统计信息
      */
-    public static function getStats(string $storage = null): array
+    public static function getStats(?string $storage = null): array
     {
         return static::storage($storage)->getStats();
     }
@@ -358,7 +358,7 @@ class KodeJwt
     /**
      * 获取Token管理器
      */
-    public static function tokenManager(string $guard = null): TokenManager
+    public static function tokenManager(?string $guard = null): TokenManager
     {
         $guardInstance = static::guard($guard);
         return new TokenManager(
@@ -371,7 +371,7 @@ class KodeJwt
     /**
      * 获取用户的所有活跃Token
      */
-    public static function getUserTokens(string $uid, string $platform = null, string $guard = null): array
+    public static function getUserTokens(string $uid, ?string $platform = null, ?string $guard = null): array
     {
         return static::tokenManager($guard)->getUserTokens($uid, $platform);
     }
@@ -379,7 +379,7 @@ class KodeJwt
     /**
      * 强制注销用户的所有Token
      */
-    public static function revokeUserTokens(string $uid, string $platform = null, string $guard = null): int
+    public static function revokeUserTokens(string $uid, ?string $platform = null, ?string $guard = null): int
     {
         return static::tokenManager($guard)->revokeUserTokens($uid, $platform);
     }
@@ -387,7 +387,7 @@ class KodeJwt
     /**
      * 检查Token是否有效
      */
-    public static function isTokenValid(string $token, string $guard = null): bool
+    public static function isTokenValid(string $token, ?string $guard = null): bool
     {
         return static::tokenManager($guard)->isTokenValid($token);
     }
@@ -395,7 +395,7 @@ class KodeJwt
     /**
      * 获取Token信息
      */
-    public static function getTokenInfo(string $token, string $guard = null): ?array
+    public static function getTokenInfo(string $token, ?string $guard = null): ?array
     {
         return static::tokenManager($guard)->getTokenInfo($token);
     }

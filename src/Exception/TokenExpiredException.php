@@ -1,16 +1,24 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Kode\Jwt\Exception;
 
-class TokenExpiredException extends \Exception
+class TokenExpiredException extends JwtException
 {
     protected $message = 'Token has expired';
 
     private ?int $expiredAt = null;
 
-    public function __construct(string $message = 'Token has expired', int $expiredAt = null)
-    {
-        parent::__construct($message);
+    public function __construct(
+        string $message = 'Token has expired',
+        ?int $expiredAt = null,
+        int $code = 0,
+        ?\Throwable $previous = null,
+        ?string $token = null,
+        ?string $jti = null
+    ) {
+        parent::__construct($message, $code, $previous, $token, $jti);
         $this->expiredAt = $expiredAt;
     }
 

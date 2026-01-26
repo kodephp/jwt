@@ -22,14 +22,17 @@ final readonly class Payload implements Arrayable
     public function __construct(
         public int|string|null $uid = null,
         public ?string $username = null,
-        public string $platform,
-        public int $exp,
-        public int $iat,
-        public string $jti,
+        public string $platform = 'default',
+        public int $exp = 0,
+        public int $iat = 0,
+        public string $jti = '',
         public ?array $roles = null,
         public ?array $perms = null,
         public array $custom = []
     ) {
+        if ($this->platform === '' || $this->jti === '' || $this->exp <= 0 || $this->iat <= 0) {
+            throw new \InvalidArgumentException('Invalid payload data.');
+        }
     }
 
     public function toArray(): array
@@ -94,10 +97,10 @@ final readonly class Payload implements Arrayable
     public static function create(
         int|string|null $uid = null,
         ?string $username = null,
-        string $platform,
-        int $exp,
-        int $iat,
-        string $jti,
+        string $platform = 'default',
+        int $exp = 0,
+        int $iat = 0,
+        string $jti = '',
         ?array $roles = null,
         ?array $perms = null,
         array|string|null $customData = null

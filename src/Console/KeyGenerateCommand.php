@@ -18,7 +18,7 @@ class KeyGenerateCommand
 
     protected string $algo = 'rsa';
 
-    public function __construct(string $basePath = null)
+    public function __construct(?string $basePath = null)
     {
         $this->basePath = $basePath ?? getcwd();
     }
@@ -179,7 +179,7 @@ class KeyGenerateCommand
         return $this;
     }
 
-    public static function run(array $args = [], string $basePath = null): int
+    public static function run(array $args = [], ?string $basePath = null): int
     {
         $command = new self($basePath);
         return $command->handle($args);

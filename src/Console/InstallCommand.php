@@ -18,7 +18,7 @@ class InstallCommand
 
     protected string $defaultPlatform = 'web';
 
-    public function __construct(string $basePath = null)
+    public function __construct(?string $basePath = null)
     {
         $this->basePath = $basePath ?? getcwd();
     }
@@ -359,7 +359,7 @@ class InstallCommand
         return $this;
     }
 
-    public static function run(array $args = [], string $basePath = null): int
+    public static function run(array $args = [], ?string $basePath = null): int
     {
         $command = new self($basePath);
         return $command->handle($args);

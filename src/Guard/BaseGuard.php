@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Kode\Jwt\Guard;
 
 use Kode\Jwt\Contract\GuardInterface;
@@ -43,25 +45,13 @@ abstract class BaseGuard implements GuardInterface
      */
     public function authenticate(string $token): Payload
     {
-        try {
-            // 解析Token
-            $payload = $this->parser->parse($token);
+        $payload = $this->parser->parse($token, $this->getExpectedPlatform());
 
-            // 检查是否在黑名单中
-            if ($this->storage->isBlacklisted($payload->jti)) {
-                throw new TokenBlacklistedException('Token has been blacklisted', $token, $payload->jti);
-            }
-
-            return $payload;
-        } catch (TokenExpiredException $e) {
-            // 检查是否可以刷新
-            if ($this->canRefresh($token)) {
-                throw $e;
-            }
-
-            // 如果不能刷新，直接抛出异常
-            throw new TokenExpiredException('Token has expired and cannot be refreshed', $e->getToken(), $e->getJti());
+        if ($this->storage->isBlacklisted($payload->jti)) {
+            throw new TokenBlacklistedException(jti: $payload->jti, token: $token);
         }
+
+        return $payload;
     }
 
     /**
@@ -69,8 +59,11 @@ abstract class BaseGuard implements GuardInterface
      */
     public function issue(Payload $payload): array
     {
+        $uid = $this->normalizeUid($payload->uid);
+        $platform = $this->normalizePlatform($payload->platform);
+
         // 检查是否唯一（由子类实现）
-        if (!$this->isUnique($payload->uid, $payload->platform)) {
+        if (!$this->isUnique($uid, $platform)) {
             throw new JwtException('Token is not unique for this user and platform');
         }
 
@@ -87,18 +80,18 @@ abstract class BaseGuard implements GuardInterface
             $payload,
             $token,
             $payload->exp - time(),
-            $this->config['refresh_ttl'] ?? 0,
+            $this->getRefreshTtlSeconds(),
             new \DateTimeImmutable()
         );
         $this->eventDispatcher->dispatch($event);
 
         // 注册Token（由子类实现）
-        $this->register($payload->uid, $payload->platform, $payload->jti);
+        $this->register($uid, $platform, $payload->jti);
 
         return [
             'token' => $token,
             'expires_in' => $payload->exp - time(),
-            'refresh_ttl' => $this->config['refresh_ttl'] ?? 0
+            'refresh_ttl' => $this->getRefreshTtlSeconds()
         ];
     }
 
@@ -107,8 +100,7 @@ abstract class BaseGuard implements GuardInterface
      */
     public function refresh(string $token): array
     {
-        // 验证旧Token
-        $oldPayload = $this->authenticate($token);
+        $oldPayload = $this->parser->parse($token, $this->getExpectedPlatform(), true);
 
         // 检查是否可以刷新
         if (!$this->canRefresh($token)) {
@@ -116,12 +108,13 @@ abstract class BaseGuard implements GuardInterface
         }
 
         // 创建新的Payload
+        $now = time();
         $newPayload = new Payload(
             uid: $oldPayload->uid,
             username: $oldPayload->username,
             platform: $oldPayload->platform,
-            exp: time() + ($this->config['ttl'] ?? 3600),
-            iat: time(),
+            exp: $now + $this->getTtlSeconds(),
+            iat: $now,
             jti: uniqid('jwt_', true),
             roles: $oldPayload->roles,
             perms: $oldPayload->perms,
@@ -150,12 +143,14 @@ abstract class BaseGuard implements GuardInterface
         $this->eventDispatcher->dispatch($event);
 
         // 注册新Token（由子类实现）
-        $this->register($newPayload->uid, $newPayload->platform, $newPayload->jti);
+        $newUid = $this->normalizeUid($newPayload->uid);
+        $newPlatform = $this->normalizePlatform($newPayload->platform);
+        $this->register($newUid, $newPlatform, $newPayload->jti);
 
         return [
             'token' => $newToken,
             'expires_in' => $newPayload->exp - time(),
-            'refresh_ttl' => $this->config['refresh_ttl'] ?? 0
+            'refresh_ttl' => $this->getRefreshTtlSeconds()
         ];
     }
 
@@ -165,14 +160,9 @@ abstract class BaseGuard implements GuardInterface
     public function invalidate(string $token): bool
     {
         try {
-            // 解析Token
-            $payload = $this->parser->parse($token);
-
-            // 计算TTL（剩余时间）
-            $ttl = max(0, $payload->exp - time());
-
-            // 加入黑名单
-            $result = $this->storage->blacklist($payload->jti, $ttl);
+            $payload = $this->parser->parse($token, $this->getExpectedPlatform(), true);
+            $blacklistTtl = $this->getBlacklistTtlSeconds($payload);
+            $result = $this->storage->blacklist($payload->jti, $blacklistTtl);
 
             if ($result) {
                 // 派发事件
@@ -203,8 +193,7 @@ abstract class BaseGuard implements GuardInterface
         }
 
         try {
-            // 解析Token
-            $payload = $this->parser->parse($token);
+            $payload = $this->parser->parse($token, $this->getExpectedPlatform(), true);
 
             // 检查是否在黑名单中
             if ($this->storage->isBlacklisted($payload->jti)) {
@@ -212,14 +201,92 @@ abstract class BaseGuard implements GuardInterface
             }
 
             // 计算刷新窗口期
-            $refreshTtl = $this->config['refresh_ttl'] ?? 0;
-            $refreshWindow = $payload->exp + $refreshTtl;
+            $refreshWindow = $payload->exp + $this->getRefreshTtlSeconds();
 
             // 检查是否在刷新窗口期内
             return time() <= $refreshWindow;
         } catch (TokenInvalidException $e) {
             return false;
         }
+    }
+
+    protected function getExpectedPlatform(): ?string
+    {
+        $platform = $this->config['platform'] ?? null;
+        if ($platform === null) {
+            return null;
+        }
+
+        $platform = (string) $platform;
+        return $platform === '' ? null : $platform;
+    }
+
+    protected function normalizeUid(int|string|null $uid): string
+    {
+        if ($uid === null || $uid === '') {
+            throw new JwtException('User ID (uid) is required');
+        }
+
+        return (string) $uid;
+    }
+
+    protected function normalizePlatform(string $platform): string
+    {
+        $platform = trim($platform);
+        if ($platform === '') {
+            throw new JwtException('Platform is required');
+        }
+
+        return $platform;
+    }
+
+    protected function getTtlSeconds(): int
+    {
+        $ttl = (int) ($this->config['ttl'] ?? 1440);
+        $unit = (string) ($this->config['ttl_unit'] ?? '');
+
+        if ($unit === 'seconds') {
+            return max(1, $ttl);
+        }
+
+        if ($unit === 'minutes') {
+            return max(1, $ttl * 60);
+        }
+
+        if ($ttl <= 2880) {
+            return max(1, $ttl * 60);
+        }
+
+        return max(1, $ttl);
+    }
+
+    protected function getRefreshTtlSeconds(): int
+    {
+        $refreshTtl = (int) ($this->config['refresh_ttl'] ?? 0);
+        $unit = (string) ($this->config['refresh_ttl_unit'] ?? '');
+
+        if ($unit === 'seconds') {
+            return max(0, $refreshTtl);
+        }
+
+        if ($unit === 'minutes') {
+            return max(0, $refreshTtl * 60);
+        }
+
+        if ($refreshTtl <= 43200) {
+            return max(0, $refreshTtl * 60);
+        }
+
+        return max(0, $refreshTtl);
+    }
+
+    protected function getBlacklistTtlSeconds(Payload $payload): int
+    {
+        $remaining = max(0, $payload->exp - time());
+        $refresh = ($this->config['refresh_enabled'] ?? false) ? $this->getRefreshTtlSeconds() : 0;
+        $ttl = $remaining + $refresh;
+
+        return $ttl > 0 ? $ttl : 1;
     }
 
     /**
@@ -262,7 +329,7 @@ abstract class BaseGuard implements GuardInterface
     /**
      * 获取用户的所有活跃Token
      */
-    public function getUserActiveTokens(int $uid, string $platform = null): array
+    public function getUserActiveTokens(int $uid, ?string $platform = null): array
     {
         // 这个方法需要在具体的存储实现中处理
         // 这里提供一个通用的实现

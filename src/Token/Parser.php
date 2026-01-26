@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Kode\Jwt\Token;
 
 use Kode\Jwt\Exception\JwtException;
@@ -30,13 +32,13 @@ class Parser
     /**
      * 解析Token
      */
-    public function parse(string $token, ?string $expectedPlatform = null): Payload
+    public function parse(string $token, ?string $expectedPlatform = null, bool $ignoreExpiration = false): Payload
     {
         // 分割Token
         $parts = explode('.', $token);
 
         if (count($parts) !== 3) {
-            throw new TokenInvalidException('Invalid token format');
+            throw new TokenInvalidException('Invalid token format', token: $token);
         }
 
         [$headerEncoded, $payloadEncoded, $signatureEncoded] = $parts;
@@ -51,25 +53,28 @@ class Parser
         $this->verifySignature("{$headerEncoded}.{$payloadEncoded}", $signatureEncoded, $header['alg'] ?? 'HS256');
 
         // 验证声明
-        $this->validateClaims($payloadArray);
+        $this->validateClaims($payloadArray, $ignoreExpiration, $token);
 
         // 如果指定了期望的平台，验证平台匹配
         if ($expectedPlatform !== null && ($payloadArray['platform'] ?? '') !== $expectedPlatform) {
-            throw new TokenInvalidException('Token platform mismatch');
+            throw new TokenInvalidException('Token platform mismatch', token: $token, jti: $payloadArray['jti'] ?? null);
         }
 
-        // 创建Payload对象
-        return new Payload(
-            uid: $payloadArray['uid'] ?? null,
-            username: $payloadArray['username'] ?? null,
-            platform: $payloadArray['platform'] ?? '',
-            exp: $payloadArray['exp'] ?? 0,
-            iat: $payloadArray['iat'] ?? 0,
-            jti: $payloadArray['jti'] ?? '',
-            roles: $payloadArray['roles'] ?? null,
-            perms: $payloadArray['perms'] ?? null,
-            custom: $payloadArray['custom'] ?? []
-        );
+        try {
+            return new Payload(
+                uid: $payloadArray['uid'] ?? null,
+                username: $payloadArray['username'] ?? null,
+                platform: $payloadArray['platform'] ?? '',
+                exp: $payloadArray['exp'] ?? 0,
+                iat: $payloadArray['iat'] ?? 0,
+                jti: $payloadArray['jti'] ?? '',
+                roles: $payloadArray['roles'] ?? null,
+                perms: $payloadArray['perms'] ?? null,
+                custom: $payloadArray['custom'] ?? []
+            );
+        } catch (\InvalidArgumentException $e) {
+            throw new TokenInvalidException('Invalid token payload', $e->getMessage(), previous: $e, token: $token, jti: $payloadArray['jti'] ?? null);
+        }
     }
 
     /**
@@ -179,23 +184,24 @@ class Parser
      * @throws TokenExpiredException 当Token已过期时抛出异常
      * @throws TokenInvalidException 当Token尚未生效或签发时间在未来时抛出异常
      */
-    protected function validateClaims(array $claims): void
+    protected function validateClaims(array $claims, bool $ignoreExpiration, string $token): void
     {
         $now = time();
 
-        // 检查是否过期
-        if (isset($claims['exp']) && $now > $claims['exp']) {
-            throw new TokenExpiredException('Token has expired');
+        $jti = isset($claims['jti']) ? (string) $claims['jti'] : null;
+
+        if (!$ignoreExpiration && isset($claims['exp']) && $now > $claims['exp']) {
+            throw new TokenExpiredException('Token has expired', (int) $claims['exp'], token: $token, jti: $jti);
         }
 
         // 检查是否尚未生效
         if (isset($claims['nbf']) && $now < $claims['nbf']) {
-            throw new TokenInvalidException('Token is not yet valid');
+            throw new TokenInvalidException('Token is not yet valid', token: $token, jti: $jti);
         }
 
         // 检查签发时间
         if (isset($claims['iat']) && $now < $claims['iat']) {
-            throw new TokenInvalidException('Token issued in the future');
+            throw new TokenInvalidException('Token issued in the future', token: $token, jti: $jti);
         }
     }
 }

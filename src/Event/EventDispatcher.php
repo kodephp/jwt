@@ -83,7 +83,7 @@ class EventDispatcher
     /**
      * 检查是否有监听器
      */
-    public function hasListeners(string $event = null): bool
+    public function hasListeners(?string $event = null): bool
     {
         if ($event === null) {
             return !empty($this->listeners);
@@ -95,7 +95,7 @@ class EventDispatcher
     /**
      * 获取监听器数量
      */
-    public function getListenerCount(string $event = null): int
+    public function getListenerCount(?string $event = null): int
     {
         if ($event === null) {
             $count = 0;

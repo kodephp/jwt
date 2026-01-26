@@ -28,7 +28,7 @@ class TokenManager
      *
      * @return array<int, array>
      */
-    public function getUserTokens(string $uid, string $platform = null): array
+    public function getUserTokens(string $uid, ?string $platform = null): array
     {
         $tokens = [];
 
@@ -107,7 +107,7 @@ class TokenManager
      * @param string|null $platform 平台标识（可选）
      * @return int 被注销的Token数量
      */
-    public function revokeUserTokens(string $uid, string $platform = null): int
+    public function revokeUserTokens(string $uid, ?string $platform = null): int
     {
         $revokedCount = 0;
 
@@ -117,7 +117,15 @@ class TokenManager
             $tokenIds = $this->storage->get($key) ?? [];
 
             foreach ($tokenIds as $jti) {
-                if ($this->guard->invalidate($jti)) {
+                $tokenData = $this->storage->get("token:{$jti}");
+                if (is_array($tokenData) && isset($tokenData['token']) && is_string($tokenData['token'])) {
+                    $revoked = $this->guard->invalidate($tokenData['token']);
+                } else {
+                    $ttl = is_array($tokenData) && isset($tokenData['exp']) ? max(1, (int) $tokenData['exp'] - time()) : 3600;
+                    $revoked = $this->storage->blacklist($jti, $ttl);
+                }
+
+                if ($revoked) {
                     $revokedCount++;
                 }
             }
@@ -131,7 +139,15 @@ class TokenManager
                 $tokenIds = $this->storage->get($key) ?? [];
 
                 foreach ($tokenIds as $jti) {
-                    if ($this->guard->invalidate($jti)) {
+                    $tokenData = $this->storage->get("token:{$jti}");
+                    if (is_array($tokenData) && isset($tokenData['token']) && is_string($tokenData['token'])) {
+                        $revoked = $this->guard->invalidate($tokenData['token']);
+                    } else {
+                        $ttl = is_array($tokenData) && isset($tokenData['exp']) ? max(1, (int) $tokenData['exp'] - time()) : 3600;
+                        $revoked = $this->storage->blacklist($jti, $ttl);
+                    }
+
+                    if ($revoked) {
                         $revokedCount++;
                     }
                 }
