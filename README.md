@@ -2794,7 +2794,7 @@ class CustomGuard implements GuardInterface
 
 ## 📄 许可证
 
-本项目采用 MIT 许可证开源。
+本项目采用 Apache 2.0 许可证开源。
 
 ---
 
