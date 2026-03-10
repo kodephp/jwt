@@ -2791,11 +2791,3 @@ class CustomGuard implements GuardInterface
 - Amp
 
 ---
-
-## 📄 许可证
-
-本项目采用 Apache 2.0 许可证开源。
-
----
-
-一个**安全、健壮、易用、高性能**的 JWT 包，适用于从传统 FPM 到现代协程项目的全场景需求。
