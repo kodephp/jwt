@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Kode\Jwt\Guard;
 
 use Kode\Jwt\Contract\GuardInterface;
+use Kode\Jwt\Contract\LoggerInterface;
 use Kode\Jwt\Contract\StorageInterface;
 use Kode\Jwt\Token\Builder;
 use Kode\Jwt\Token\Parser;
@@ -15,8 +16,8 @@ use Kode\Jwt\Event\TokenRefreshed;
 use Kode\Jwt\Event\TokenRevoked;
 use Kode\Jwt\Exception\JwtException;
 use Kode\Jwt\Exception\TokenBlacklistedException;
-use Kode\Jwt\Exception\TokenExpiredException;
 use Kode\Jwt\Exception\TokenInvalidException;
+use Kode\Jwt\Log\NullLogger;
 
 abstract class BaseGuard implements GuardInterface
 {
@@ -24,6 +25,7 @@ abstract class BaseGuard implements GuardInterface
     protected Builder $builder;
     protected Parser $parser;
     protected EventDispatcher $eventDispatcher;
+    protected LoggerInterface $logger;
     protected array $config;
 
     public function __construct(
@@ -31,12 +33,14 @@ abstract class BaseGuard implements GuardInterface
         Builder $builder,
         Parser $parser,
         EventDispatcher $eventDispatcher,
+        ?LoggerInterface $logger = null,
         array $config = []
     ) {
         $this->storage = $storage;
         $this->builder = $builder;
         $this->parser = $parser;
         $this->eventDispatcher = $eventDispatcher;
+        $this->logger = $logger ?? new NullLogger();
         $this->config = $config;
     }
 
@@ -45,13 +49,23 @@ abstract class BaseGuard implements GuardInterface
      */
     public function authenticate(string $token): Payload
     {
-        $payload = $this->parser->parse($token, $this->getExpectedPlatform());
+        try {
+            $payload = $this->parser->parse($token, $this->getExpectedPlatform());
 
-        if ($this->storage->isBlacklisted($payload->jti)) {
-            throw new TokenBlacklistedException(jti: $payload->jti, token: $token);
+            if ($this->storage->isBlacklisted($payload->jti)) {
+                $this->logger->warning('Token 在黑名单中，认证失败', ['jti' => $payload->jti]);
+                throw new TokenBlacklistedException(jti: $payload->jti, token: $token);
+            }
+
+            $this->logger->debug('Token 认证成功', ['jti' => $payload->jti, 'platform' => $payload->platform]);
+            return $payload;
+        } catch (JwtException $exception) {
+            $this->logger->error('Token 认证异常', [
+                'error' => $exception->getMessage(),
+                'jti' => $exception->getJti(),
+            ]);
+            throw $exception;
         }
-
-        return $payload;
     }
 
     /**
@@ -59,40 +73,41 @@ abstract class BaseGuard implements GuardInterface
      */
     public function issue(Payload $payload): array
     {
-        $uid = $this->normalizeUid($payload->uid);
-        $platform = $this->normalizePlatform($payload->platform);
+        try {
+            $uid = $this->normalizeUid($payload->uid);
+            $platform = $this->normalizePlatform($payload->platform);
 
-        // 检查是否唯一（由子类实现）
-        if (!$this->isUnique($uid, $platform)) {
-            throw new JwtException('Token is not unique for this user and platform');
+            if (!$this->isUnique($uid, $platform)) {
+                throw new JwtException('Token is not unique for this user and platform');
+            }
+
+            $token = $this->builder
+                ->fromArrayable($payload)
+                ->build();
+
+            $this->storeToken($payload, $token);
+
+            $event = new TokenIssued(
+                $payload,
+                $token,
+                $payload->exp - time(),
+                $this->getRefreshTtlSeconds(),
+                new \DateTimeImmutable()
+            );
+            $this->eventDispatcher->dispatch($event);
+
+            $this->register($uid, $platform, $payload->jti);
+            $this->logger->info('Token 签发成功', ['uid' => $uid, 'platform' => $platform, 'jti' => $payload->jti]);
+
+            return [
+                'token' => $token,
+                'expires_in' => $payload->exp - time(),
+                'refresh_ttl' => $this->getRefreshTtlSeconds()
+            ];
+        } catch (JwtException $exception) {
+            $this->logger->error('Token 签发失败', ['error' => $exception->getMessage()]);
+            throw $exception;
         }
-
-        // 构建Token
-        $token = $this->builder
-            ->fromArrayable($payload)
-            ->build();
-
-        // 存储Token信息
-        $this->storeToken($payload, $token);
-
-        // 派发事件
-        $event = new TokenIssued(
-            $payload,
-            $token,
-            $payload->exp - time(),
-            $this->getRefreshTtlSeconds(),
-            new \DateTimeImmutable()
-        );
-        $this->eventDispatcher->dispatch($event);
-
-        // 注册Token（由子类实现）
-        $this->register($uid, $platform, $payload->jti);
-
-        return [
-            'token' => $token,
-            'expires_in' => $payload->exp - time(),
-            'refresh_ttl' => $this->getRefreshTtlSeconds()
-        ];
     }
 
     /**
@@ -115,7 +130,7 @@ abstract class BaseGuard implements GuardInterface
             platform: $oldPayload->platform,
             exp: $now + $this->getTtlSeconds(),
             iat: $now,
-            jti: uniqid('jwt_', true),
+            jti: self::generateJti(),
             roles: $oldPayload->roles,
             perms: $oldPayload->perms,
             custom: $oldPayload->custom
@@ -146,6 +161,7 @@ abstract class BaseGuard implements GuardInterface
         $newUid = $this->normalizeUid($newPayload->uid);
         $newPlatform = $this->normalizePlatform($newPayload->platform);
         $this->register($newUid, $newPlatform, $newPayload->jti);
+        $this->logger->info('Token 刷新成功', ['uid' => $newUid, 'platform' => $newPlatform, 'jti' => $newPayload->jti]);
 
         return [
             'token' => $newToken,
@@ -178,6 +194,7 @@ abstract class BaseGuard implements GuardInterface
 
             return $result;
         } catch (TokenInvalidException $e) {
+            $this->logger->warning('Token 注销失败，原因是 Token 无效', ['error' => $e->getMessage()]);
             return false;
         }
     }
@@ -287,6 +304,18 @@ abstract class BaseGuard implements GuardInterface
         $ttl = $remaining + $refresh;
 
         return $ttl > 0 ? $ttl : 1;
+    }
+
+    /**
+     * 生成高熵 JTI
+     *
+     * 使用随机字节而非时间戳前缀，降低可预测性，减少重放风险。
+     *
+     * @return string
+     */
+    protected static function generateJti(): string
+    {
+        return 'jwt_' . bin2hex(random_bytes(16));
     }
 
     /**

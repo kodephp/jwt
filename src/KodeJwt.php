@@ -1,12 +1,17 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Kode\Jwt;
 
 use Kode\Jwt\Config\ConfigLoader;
 use Kode\Jwt\Contract\StorageInterface;
 use Kode\Jwt\Contract\GuardInterface;
+use Kode\Jwt\Contract\LoggerInterface;
 use Kode\Jwt\Guard\SsoGuard;
 use Kode\Jwt\Guard\MloGuard;
+use Kode\Jwt\Log\LoggerFactory;
+use Kode\Jwt\Log\NullLogger;
 use Kode\Jwt\Storage\StorageFactory;
 use Kode\Jwt\Token\Builder;
 use Kode\Jwt\Token\Parser;
@@ -22,6 +27,7 @@ class KodeJwt
     private static ?EventDispatcher $eventDispatcher = null;
     private static ?Builder $builder = null;
     private static ?Parser $parser = null;
+    private static ?LoggerInterface $logger = null;
     private static bool $configLoaded = false;
 
     /**
@@ -29,13 +35,12 @@ class KodeJwt
      */
     public static function init(array $config = []): void
     {
-        if (!empty($config)) {
-            static::$configLoader = new ConfigLoader($config);
-        } else {
-            static::$configLoader = new ConfigLoader();
-        }
+        static::resetRuntimeState();
+        static::$configLoader = new ConfigLoader($config);
         static::$eventDispatcher = new EventDispatcher();
+        static::$logger = LoggerFactory::create(static::$configLoader->get('logging', []));
         static::$configLoaded = true;
+        static::logger()->info('JWT 初始化完成', ['guard' => static::$configLoader->get('defaults.guard', 'api')]);
     }
 
     /**
@@ -54,6 +59,7 @@ class KodeJwt
         }
 
         static::init($config);
+        static::logger()->info('JWT 配置文件加载成功', ['path' => $path]);
     }
 
     /**
@@ -77,6 +83,7 @@ class KodeJwt
                 $fullPath = $basePath . '/' . $configFile;
                 if (file_exists($fullPath)) {
                     static::loadConfigFromFile($fullPath);
+                    static::logger()->debug('自动检测到 JWT 配置文件', ['path' => $fullPath]);
                     return true;
                 }
             }
@@ -197,7 +204,7 @@ class KodeJwt
                     'single_login' => false,
                 ],
             ],
-            'storages' => [
+            'storage' => [
                 'memory' => [
                     'driver' => 'memory',
                 ],
@@ -211,6 +218,12 @@ class KodeJwt
                     'ttl' => 0,
                 ],
             ],
+            'logging' => [
+                'enabled' => false,
+                'driver' => 'file',
+                'path' => './logs/kode-jwt.log',
+                'level' => 'info',
+            ],
         ];
     }
 
@@ -220,7 +233,7 @@ class KodeJwt
     public static function config(): ConfigLoader
     {
         if (static::$configLoader === null) {
-            static::$configLoader = new ConfigLoader();
+            static::init();
         }
 
         return static::$configLoader;
@@ -236,6 +249,26 @@ class KodeJwt
         }
 
         return static::$eventDispatcher;
+    }
+
+    /**
+     * 获取日志实例
+     *
+     * 在未启用日志配置时返回空日志对象，确保调用端无条件可用。
+     */
+    public static function logger(): LoggerInterface
+    {
+        if (static::$logger !== null) {
+            return static::$logger;
+        }
+
+        if (static::$configLoader !== null) {
+            static::$logger = LoggerFactory::create(static::$configLoader->get('logging', []));
+            return static::$logger;
+        }
+
+        static::$logger = new NullLogger();
+        return static::$logger;
     }
 
     /**
@@ -272,6 +305,7 @@ class KodeJwt
         if (!isset(static::$storages[$name])) {
             $factory = new StorageFactory(static::config());
             static::$storages[$name] = $factory->create($name);
+            static::logger()->debug('存储实例创建完成', ['storage' => $name]);
         }
 
         return static::$storages[$name];
@@ -295,13 +329,28 @@ class KodeJwt
             // 根据驱动类型创建守卫
             switch ($guardConfig['driver'] ?? 'sso') {
                 case 'mlo':
-                    static::$guards[$name] = new MloGuard($storage, $builder, $parser, static::events(), $guardConfig);
+                    static::$guards[$name] = new MloGuard(
+                        $storage,
+                        $builder,
+                        $parser,
+                        static::events(),
+                        static::logger(),
+                        $guardConfig
+                    );
                     break;
                 case 'sso':
                 default:
-                    static::$guards[$name] = new SsoGuard($storage, $builder, $parser, static::events(), $guardConfig);
+                    static::$guards[$name] = new SsoGuard(
+                        $storage,
+                        $builder,
+                        $parser,
+                        static::events(),
+                        static::logger(),
+                        $guardConfig
+                    );
                     break;
             }
+            static::logger()->info('守卫实例创建完成', ['guard' => $name, 'driver' => $guardConfig['driver'] ?? 'sso']);
         }
 
         return static::$guards[$name];
@@ -344,7 +393,12 @@ class KodeJwt
      */
     public static function cleanExpired(?string $storage = null): int
     {
-        return static::storage($storage)->cleanExpired();
+        $result = static::storage($storage)->cleanExpired();
+        if (is_int($result)) {
+            return $result;
+        }
+
+        return $result ? 1 : 0;
     }
 
     /**
@@ -360,9 +414,13 @@ class KodeJwt
      */
     public static function tokenManager(?string $guard = null): TokenManager
     {
+        $guardName = $guard ?? static::config()->get('defaults.guard', 'api');
+        $guardConfig = static::config()->get("guards.{$guardName}", []);
+        $storageName = (string) ($guardConfig['storage'] ?? static::config()->get('defaults.storage', 'memory'));
         $guardInstance = static::guard($guard);
+
         return new TokenManager(
-            static::storage(),
+            static::storage($storageName),
             $guardInstance,
             static::config()
         );
@@ -398,5 +456,19 @@ class KodeJwt
     public static function getTokenInfo(string $token, ?string $guard = null): ?array
     {
         return static::tokenManager($guard)->getTokenInfo($token);
+    }
+
+    /**
+     * 重置运行时缓存状态
+     *
+     * 用于配置重载场景，确保 Guard、Storage、Builder、Parser 与最新配置一致。
+     */
+    private static function resetRuntimeState(): void
+    {
+        static::$guards = [];
+        static::$storages = [];
+        static::$builder = null;
+        static::$parser = null;
+        static::$logger = null;
     }
 }

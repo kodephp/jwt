@@ -31,10 +31,17 @@ class Parser
 
     /**
      * 解析Token
+     *
+     * 核心流程包含：结构校验、头部与载荷解码、算法一致性检查、
+     * 签名校验、声明校验、平台一致性校验。
+     *
+     * @param string $token 原始 JWT 字符串
+     * @param string|null $expectedPlatform 期望的平台标识，传入后会强制匹配
+     * @param bool $ignoreExpiration 是否忽略过期校验，主要用于刷新流程
+     * @return Payload
      */
     public function parse(string $token, ?string $expectedPlatform = null, bool $ignoreExpiration = false): Payload
     {
-        // 分割Token
         $parts = explode('.', $token);
 
         if (count($parts) !== 3) {
@@ -43,21 +50,25 @@ class Parser
 
         [$headerEncoded, $payloadEncoded, $signatureEncoded] = $parts;
 
-        // 解码头部
         $header = $this->decodePart($headerEncoded);
-
-        // 解码载荷
         $payloadArray = $this->decodePart($payloadEncoded);
+        $algorithm = (string) ($header['alg'] ?? '');
 
-        // 验证签名
-        $this->verifySignature("{$headerEncoded}.{$payloadEncoded}", $signatureEncoded, $header['alg'] ?? 'HS256');
+        if ($algorithm === '') {
+            throw new TokenInvalidException('Missing token algorithm', token: $token);
+        }
 
-        // 验证声明
+        $this->ensureAllowedAlgorithm($algorithm, $token);
+
+        $this->verifySignature("{$headerEncoded}.{$payloadEncoded}", $signatureEncoded, $algorithm);
+
         $this->validateClaims($payloadArray, $ignoreExpiration, $token);
-
-        // 如果指定了期望的平台，验证平台匹配
         if ($expectedPlatform !== null && ($payloadArray['platform'] ?? '') !== $expectedPlatform) {
-            throw new TokenInvalidException('Token platform mismatch', token: $token, jti: $payloadArray['jti'] ?? null);
+            throw new TokenInvalidException(
+                'Token platform mismatch',
+                token: $token,
+                jti: $payloadArray['jti'] ?? null
+            );
         }
 
         try {
@@ -73,7 +84,13 @@ class Parser
                 custom: $payloadArray['custom'] ?? []
             );
         } catch (\InvalidArgumentException $e) {
-            throw new TokenInvalidException('Invalid token payload', $e->getMessage(), previous: $e, token: $token, jti: $payloadArray['jti'] ?? null);
+            throw new TokenInvalidException(
+                'Invalid token payload',
+                $e->getMessage(),
+                previous: $e,
+                token: $token,
+                jti: $payloadArray['jti'] ?? null
+            );
         }
     }
 
@@ -85,10 +102,9 @@ class Parser
      */
     protected function decodePart(string $encoded): array
     {
-        $json = base64_decode(strtr($encoded, '-_', '+/'));
+        $json = $this->decodeBase64Url($encoded);
         $data = json_decode($json, true);
-
-        if (json_last_error() !== JSON_ERROR_NONE) {
+        if (!is_array($data) || json_last_error() !== JSON_ERROR_NONE) {
             throw new TokenInvalidException('Invalid JSON in token part');
         }
 
@@ -100,7 +116,10 @@ class Parser
      */
     protected function verifySignature(string $data, string $signature, string $algorithm): void
     {
-        $decodedSignature = base64_decode(strtr($signature, '-_', '+/'));
+        $decodedSignature = $this->decodeBase64Url($signature);
+        if ($decodedSignature === '') {
+            throw new TokenInvalidException('Empty token signature');
+        }
 
         switch ($algorithm) {
             case 'HS256':
@@ -187,21 +206,79 @@ class Parser
     protected function validateClaims(array $claims, bool $ignoreExpiration, string $token): void
     {
         $now = time();
+        $clockSkew = max(0, (int) ($this->config['clock_skew'] ?? 0));
 
         $jti = isset($claims['jti']) ? (string) $claims['jti'] : null;
+        if ($jti === null || $jti === '') {
+            throw new TokenInvalidException('Missing required claim: jti', token: $token);
+        }
 
-        if (!$ignoreExpiration && isset($claims['exp']) && $now > $claims['exp']) {
+        $platform = (string) ($claims['platform'] ?? '');
+        if ($platform === '') {
+            throw new TokenInvalidException('Missing required claim: platform', token: $token, jti: $jti);
+        }
+
+        if (!isset($claims['exp'])) {
+            throw new TokenInvalidException('Missing required claim: exp', token: $token, jti: $jti);
+        }
+
+        if (!$ignoreExpiration && $now > ((int) $claims['exp'] + $clockSkew)) {
             throw new TokenExpiredException('Token has expired', (int) $claims['exp'], token: $token, jti: $jti);
         }
 
-        // 检查是否尚未生效
-        if (isset($claims['nbf']) && $now < $claims['nbf']) {
+        if (isset($claims['nbf']) && ($now + $clockSkew) < (int) $claims['nbf']) {
             throw new TokenInvalidException('Token is not yet valid', token: $token, jti: $jti);
         }
 
-        // 检查签发时间
-        if (isset($claims['iat']) && $now < $claims['iat']) {
+        if (isset($claims['iat']) && ($now + $clockSkew) < (int) $claims['iat']) {
             throw new TokenInvalidException('Token issued in the future', token: $token, jti: $jti);
         }
+    }
+
+    /**
+     * 校验算法是否符合配置约束
+     *
+     * 防止攻击者通过篡改 Header 的 alg 字段绕过预期签名策略。
+     *
+     * @param string $actualAlgorithm Token 头部声明的算法
+     * @param string $token 原始 Token
+     * @return void
+     */
+    protected function ensureAllowedAlgorithm(string $actualAlgorithm, string $token): void
+    {
+        $expectedAlgorithm = strtoupper((string) ($this->config['algo'] ?? ''));
+        $actualAlgorithm = strtoupper($actualAlgorithm);
+
+        if ($actualAlgorithm === 'NONE') {
+            throw new TokenInvalidException('The "none" algorithm is forbidden', token: $token);
+        }
+
+        if ($expectedAlgorithm !== '' && $actualAlgorithm !== $expectedAlgorithm) {
+            throw new TokenInvalidException(
+                "Algorithm mismatch: expected {$expectedAlgorithm}, got {$actualAlgorithm}",
+                token: $token
+            );
+        }
+    }
+
+    /**
+     * Base64URL 安全解码
+     *
+     * @param string $value 编码字符串
+     * @return string 解码结果
+     */
+    protected function decodeBase64Url(string $value): string
+    {
+        $padding = 4 - (strlen($value) % 4);
+        if ($padding < 4) {
+            $value .= str_repeat('=', $padding);
+        }
+
+        $decoded = base64_decode(strtr($value, '-_', '+/'), true);
+        if ($decoded === false) {
+            throw new TokenInvalidException('Invalid base64url segment');
+        }
+
+        return $decoded;
     }
 }

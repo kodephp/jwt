@@ -1,0 +1,446 @@
+parameters:
+	ignoreErrors:
+		-
+			message: "#^Cannot access offset 'key' on array\\|false\\.$#"
+			count: 1
+			path: src/Console/InstallCommand.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Console\\\\InstallCommand\\:\\:determineAction\\(\\) has parameter \\$args with no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Console/InstallCommand.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Console\\\\InstallCommand\\:\\:formatArray\\(\\) has parameter \\$config with no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Console/InstallCommand.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Console\\\\InstallCommand\\:\\:formatConfig\\(\\) has parameter \\$config with no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Console/InstallCommand.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Console\\\\InstallCommand\\:\\:generateConfig\\(\\) return type has no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Console/InstallCommand.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Console\\\\InstallCommand\\:\\:generateRsaKeys\\(\\) return type has no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Console/InstallCommand.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Console\\\\InstallCommand\\:\\:getDefaultConfig\\(\\) return type has no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Console/InstallCommand.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Console\\\\InstallCommand\\:\\:handle\\(\\) has parameter \\$args with no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Console/InstallCommand.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Console\\\\InstallCommand\\:\\:mergeConfig\\(\\) has parameter \\$default with no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Console/InstallCommand.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Console\\\\InstallCommand\\:\\:mergeConfig\\(\\) has parameter \\$user with no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Console/InstallCommand.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Console\\\\InstallCommand\\:\\:mergeConfig\\(\\) return type has no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Console/InstallCommand.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Console\\\\InstallCommand\\:\\:parseOptions\\(\\) has parameter \\$args with no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Console/InstallCommand.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Console\\\\InstallCommand\\:\\:run\\(\\) has parameter \\$args with no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Console/InstallCommand.php
+
+		-
+			message: "#^Property Kode\\\\Jwt\\\\Console\\\\InstallCommand\\:\\:\\$basePath \\(string\\) does not accept string\\|false\\.$#"
+			count: 1
+			path: src/Console/InstallCommand.php
+
+		-
+			message: "#^Property Kode\\\\Jwt\\\\Console\\\\InstallCommand\\:\\:\\$userConfig type has no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Console/InstallCommand.php
+
+		-
+			message: "#^Cannot access offset 'key' on array\\|false\\.$#"
+			count: 1
+			path: src/Console/KeyGenerateCommand.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Console\\\\KeyGenerateCommand\\:\\:handle\\(\\) has parameter \\$args with no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Console/KeyGenerateCommand.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Console\\\\KeyGenerateCommand\\:\\:parseArgs\\(\\) has parameter \\$args with no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Console/KeyGenerateCommand.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Console\\\\KeyGenerateCommand\\:\\:run\\(\\) has parameter \\$args with no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Console/KeyGenerateCommand.php
+
+		-
+			message: "#^Property Kode\\\\Jwt\\\\Console\\\\KeyGenerateCommand\\:\\:\\$basePath \\(string\\) does not accept string\\|false\\.$#"
+			count: 1
+			path: src/Console/KeyGenerateCommand.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Contract\\\\TokenManagerInterface\\:\\:getConfig\\(\\) return type has no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Contract/TokenManagerInterface.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Contract\\\\TokenManagerInterface\\:\\:issue\\(\\) return type has no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Contract/TokenManagerInterface.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Contract\\\\TokenManagerInterface\\:\\:refresh\\(\\) return type has no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Contract/TokenManagerInterface.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Event\\\\BaseEvent\\:\\:__construct\\(\\) has parameter \\$data with no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Event/BaseEvent.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Event\\\\BaseEvent\\:\\:toArray\\(\\) return type has no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Event/BaseEvent.php
+
+		-
+			message: "#^Property Kode\\\\Jwt\\\\Event\\\\EventDispatcher\\:\\:\\$listeners type has no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Event/EventDispatcher.php
+
+		-
+			message: "#^Call to an undefined method ReflectionType\\:\\:getName\\(\\)\\.$#"
+			count: 3
+			path: src/Event/EventServiceProvider.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Event\\\\EventServiceProvider\\:\\:registerListenerFromArray\\(\\) has parameter \\$config with no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Event/EventServiceProvider.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Event\\\\EventServiceProvider\\:\\:registerListeners\\(\\) has parameter \\$listeners with no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Event/EventServiceProvider.php
+
+		-
+			message: "#^Parameter \\#1 \\$objectOrClass of class ReflectionClass constructor expects class\\-string\\<T of object\\>\\|T of object, string given\\.$#"
+			count: 1
+			path: src/Event/EventServiceProvider.php
+
+		-
+			message: "#^Parameter \\#2 \\$listener of method Kode\\\\Jwt\\\\Event\\\\EventDispatcher\\:\\:addListener\\(\\) expects Kode\\\\Jwt\\\\Contract\\\\EventListener, array\\<int, object\\|string\\> given\\.$#"
+			count: 2
+			path: src/Event/EventServiceProvider.php
+
+		-
+			message: "#^Parameter \\#2 \\$listener of method Kode\\\\Jwt\\\\Event\\\\EventDispatcher\\:\\:addListener\\(\\) expects Kode\\\\Jwt\\\\Contract\\\\EventListener, callable given\\.$#"
+			count: 2
+			path: src/Event/EventServiceProvider.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Event\\\\TokenBlacklisted\\:\\:getUserId\\(\\) should return int but returns int\\|string\\|null\\.$#"
+			count: 1
+			path: src/Event/TokenBlacklisted.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Event\\\\TokenExpired\\:\\:getUserId\\(\\) should return int but returns int\\|string\\|null\\.$#"
+			count: 1
+			path: src/Event/TokenExpired.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Event\\\\TokenIssued\\:\\:getUserId\\(\\) should return int but returns int\\|string\\|null\\.$#"
+			count: 1
+			path: src/Event/TokenIssued.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Event\\\\TokenRefreshed\\:\\:getUserId\\(\\) should return int but returns int\\|string\\|null\\.$#"
+			count: 1
+			path: src/Event/TokenRefreshed.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Event\\\\TokenRevoked\\:\\:getUserId\\(\\) should return int but returns int\\|string\\|null\\.$#"
+			count: 1
+			path: src/Event/TokenRevoked.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Event\\\\TokenValidated\\:\\:getUserId\\(\\) should return int but returns int\\|string\\|null\\.$#"
+			count: 1
+			path: src/Event/TokenValidated.php
+
+		-
+			message: "#^Property Kode\\\\Jwt\\\\Exception\\\\TokenBlacklistedException\\:\\:\\$message has no type specified\\.$#"
+			count: 1
+			path: src/Exception/TokenBlacklistedException.php
+
+		-
+			message: "#^Property Kode\\\\Jwt\\\\Exception\\\\TokenExpiredException\\:\\:\\$message has no type specified\\.$#"
+			count: 1
+			path: src/Exception/TokenExpiredException.php
+
+		-
+			message: "#^Property Kode\\\\Jwt\\\\Exception\\\\TokenInvalidException\\:\\:\\$message has no type specified\\.$#"
+			count: 1
+			path: src/Exception/TokenInvalidException.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Guard\\\\BaseGuard\\:\\:__construct\\(\\) has parameter \\$config with no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Guard/BaseGuard.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Guard\\\\BaseGuard\\:\\:getTokenInfo\\(\\) return type has no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Guard/BaseGuard.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Guard\\\\BaseGuard\\:\\:getUserActiveTokens\\(\\) return type has no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Guard/BaseGuard.php
+
+		-
+			message: "#^Property Kode\\\\Jwt\\\\Guard\\\\BaseGuard\\:\\:\\$config type has no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Guard/BaseGuard.php
+
+		-
+			message: "#^Call to function is_int\\(\\) with bool will always evaluate to false\\.$#"
+			count: 1
+			path: src/KodeJwt.php
+
+		-
+			message: "#^Expression on left side of \\?\\? is not nullable\\.$#"
+			count: 1
+			path: src/KodeJwt.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\KodeJwt\\:\\:detectFrameworkPaths\\(\\) return type has no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/KodeJwt.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\KodeJwt\\:\\:getDefaultConfig\\(\\) return type has no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/KodeJwt.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\KodeJwt\\:\\:getStats\\(\\) return type has no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/KodeJwt.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\KodeJwt\\:\\:getTokenInfo\\(\\) return type has no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/KodeJwt.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\KodeJwt\\:\\:getUserTokens\\(\\) return type has no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/KodeJwt.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\KodeJwt\\:\\:init\\(\\) has parameter \\$config with no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/KodeJwt.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\KodeJwt\\:\\:issue\\(\\) return type has no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/KodeJwt.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\KodeJwt\\:\\:refresh\\(\\) return type has no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/KodeJwt.php
+
+		-
+			message: "#^Parameter \\#1 \\$path of function dirname expects string, string\\|false given\\.$#"
+			count: 1
+			path: src/KodeJwt.php
+
+		-
+			message: "#^Property Kode\\\\Jwt\\\\KodeJwt\\:\\:\\$guards type has no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/KodeJwt.php
+
+		-
+			message: "#^Property Kode\\\\Jwt\\\\KodeJwt\\:\\:\\$storages type has no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/KodeJwt.php
+
+		-
+			message: "#^Unsafe access to private property Kode\\\\Jwt\\\\KodeJwt\\:\\:\\$builder through static\\:\\:\\.$#"
+			count: 4
+			path: src/KodeJwt.php
+
+		-
+			message: "#^Unsafe access to private property Kode\\\\Jwt\\\\KodeJwt\\:\\:\\$configLoaded through static\\:\\:\\.$#"
+			count: 2
+			path: src/KodeJwt.php
+
+		-
+			message: "#^Unsafe access to private property Kode\\\\Jwt\\\\KodeJwt\\:\\:\\$configLoader through static\\:\\:\\.$#"
+			count: 8
+			path: src/KodeJwt.php
+
+		-
+			message: "#^Unsafe access to private property Kode\\\\Jwt\\\\KodeJwt\\:\\:\\$eventDispatcher through static\\:\\:\\.$#"
+			count: 4
+			path: src/KodeJwt.php
+
+		-
+			message: "#^Unsafe access to private property Kode\\\\Jwt\\\\KodeJwt\\:\\:\\$guards through static\\:\\:\\.$#"
+			count: 5
+			path: src/KodeJwt.php
+
+		-
+			message: "#^Unsafe access to private property Kode\\\\Jwt\\\\KodeJwt\\:\\:\\$logger through static\\:\\:\\.$#"
+			count: 8
+			path: src/KodeJwt.php
+
+		-
+			message: "#^Unsafe access to private property Kode\\\\Jwt\\\\KodeJwt\\:\\:\\$parser through static\\:\\:\\.$#"
+			count: 4
+			path: src/KodeJwt.php
+
+		-
+			message: "#^Unsafe access to private property Kode\\\\Jwt\\\\KodeJwt\\:\\:\\$storages through static\\:\\:\\.$#"
+			count: 4
+			path: src/KodeJwt.php
+
+		-
+			message: "#^Unsafe call to private method Kode\\\\Jwt\\\\KodeJwt\\:\\:detectFrameworkPaths\\(\\) through static\\:\\:\\.$#"
+			count: 3
+			path: src/KodeJwt.php
+
+		-
+			message: "#^Unsafe call to private method Kode\\\\Jwt\\\\KodeJwt\\:\\:resetRuntimeState\\(\\) through static\\:\\:\\.$#"
+			count: 1
+			path: src/KodeJwt.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Storage\\\\ApcuStorage\\:\\:__construct\\(\\) has parameter \\$config with no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Storage/ApcuStorage.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Storage\\\\ApcuStorage\\:\\:getInfo\\(\\) return type has no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Storage/ApcuStorage.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Storage\\\\CoroutineRedisStorage\\:\\:__construct\\(\\) has parameter \\$config with no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Storage/CoroutineRedisStorage.php
+
+		-
+			message: "#^Cannot call method fetchColumn\\(\\) on PDOStatement\\|false\\.$#"
+			count: 2
+			path: src/Storage/DatabaseStorage.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Storage\\\\DatabaseStorage\\:\\:__construct\\(\\) has parameter \\$config with no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Storage/DatabaseStorage.php
+
+		-
+			message: "#^Argument of an invalid type array\\<int, string\\>\\|false supplied for foreach, only iterables are supported\\.$#"
+			count: 1
+			path: src/Storage/FileStorage.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Storage\\\\FileStorage\\:\\:__construct\\(\\) has parameter \\$config with no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Storage/FileStorage.php
+
+		-
+			message: "#^Parameter \\#1 \\$value of function count expects array\\|Countable, array\\<int, string\\>\\|false given\\.$#"
+			count: 1
+			path: src/Storage/FileStorage.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Storage\\\\MemcachedStorage\\:\\:__construct\\(\\) has parameter \\$config with no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Storage/MemcachedStorage.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Storage\\\\RedisStorage\\:\\:__construct\\(\\) has parameter \\$config with no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Storage/RedisStorage.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Storage\\\\StorageFactory\\:\\:create\\(\\) should return Kode\\\\Jwt\\\\Contract\\\\StorageInterface but returns object\\.$#"
+			count: 1
+			path: src/Storage/StorageFactory.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Token\\\\Builder\\:\\:setAudience\\(\\) has parameter \\$audience with no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Token/Builder.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Token\\\\Builder\\:\\:setClaims\\(\\) has parameter \\$claims with no value type specified in iterable type array\\.$#"
+			count: 1
+			path: src/Token/Builder.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Token\\\\Builder\\:\\:setCustom\\(\\) should return \\$this\\(Kode\\\\Jwt\\\\Token\\\\Builder\\) but returns Kode\\\\Jwt\\\\Token\\\\Builder\\.$#"
+			count: 1
+			path: src/Token/Builder.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Token\\\\Builder\\:\\:setPermissions\\(\\) should return \\$this\\(Kode\\\\Jwt\\\\Token\\\\Builder\\) but returns Kode\\\\Jwt\\\\Token\\\\Builder\\.$#"
+			count: 1
+			path: src/Token/Builder.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Token\\\\Builder\\:\\:setRoles\\(\\) should return \\$this\\(Kode\\\\Jwt\\\\Token\\\\Builder\\) but returns Kode\\\\Jwt\\\\Token\\\\Builder\\.$#"
+			count: 1
+			path: src/Token/Builder.php
+
+		-
+			message: "#^Method Kode\\\\Jwt\\\\Token\\\\Builder\\:\\:setUid\\(\\) should return \\$this\\(Kode\\\\Jwt\\\\Token\\\\Builder\\) but returns Kode\\\\Jwt\\\\Token\\\\Builder\\.$#"
+			count: 1
+			path: src/Token/Builder.php
+
+		-
+			message: "#^Offset 'exp'\\|'iat'\\|'jti'\\|'platform' on array\\{uid\\?\\: int\\|string, username\\?\\: string, platform\\: string, exp\\: int\\|string, iat\\: int\\|string, jti\\: string, roles\\?\\: array\\<string\\>, perms\\?\\: array\\<string\\>, \\.\\.\\.\\} in isset\\(\\) always exists and is not nullable\\.$#"
+			count: 1
+			path: src/Token/Payload.php
+
+		-
+			message: "#^Readonly property Kode\\\\Jwt\\\\Token\\\\Payload\\:\\:\\$custom is assigned outside of the constructor\\.$#"
+			count: 1
+			path: src/Token/Payload.php
+
+		-
+			message: "#^Right side of && is always true\\.$#"
+			count: 2
+			path: src/Token/Payload.php
+
+		-
+			message: "#^Parameter \\#1 \\$data of static method Kode\\\\Jwt\\\\Token\\\\Payload\\:\\:fromArray\\(\\) expects array\\{uid\\?\\: int\\|string, username\\?\\: string, platform\\: string, exp\\: int\\|string, iat\\: int\\|string, jti\\: string, roles\\?\\: array\\<string\\>, perms\\?\\: array\\<string\\>, \\.\\.\\.\\}, array\\{uid\\: 1\\} given\\.$#"
+			count: 1
+			path: tests/PayloadTest.php

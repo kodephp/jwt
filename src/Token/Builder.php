@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Kode\Jwt\Token;
 
 use Kode\Jwt\Contract\Arrayable;
@@ -35,9 +37,12 @@ class Builder
         $this->config = $config;
         $this->secret = $config['secret'] ?? '';
 
-        // 设置算法
         if (isset($config['algo'])) {
-            $this->headers['alg'] = $config['algo'];
+            $algorithm = strtoupper((string) $config['algo']);
+            if ($algorithm === 'NONE') {
+                throw new JwtException('The "none" algorithm is forbidden');
+            }
+            $this->headers['alg'] = $algorithm;
         }
     }
 
@@ -217,7 +222,6 @@ class Builder
      */
     public function build(): string
     {
-        // 验证必要的声明
         if (!isset($this->claims['iat'])) {
             $this->setIssuedAt(time());
         }
@@ -227,16 +231,11 @@ class Builder
         }
 
         if (!isset($this->claims['jti'])) {
-            $this->setId(uniqid('jwt_', true));
+            $this->setId(self::generateJti());
         }
 
-        // 编码头部
         $header = $this->encodePart($this->headers);
-
-        // 编码载荷
         $payload = $this->encodePart($this->claims);
-
-        // 创建签名
         $signature = $this->createSignature("{$header}.{$payload}");
 
         return "{$header}.{$payload}.{$signature}";
@@ -251,6 +250,9 @@ class Builder
     protected function encodePart(array $data): string
     {
         $json = json_encode($data);
+        if ($json === false) {
+            throw new JwtException('Failed to encode token payload as JSON');
+        }
         return rtrim(strtr(base64_encode($json), '+/', '-_'), '=');
     }
 
@@ -277,6 +279,18 @@ class Builder
             default:
                 throw new JwtException("Unsupported algorithm: {$algorithm}");
         }
+    }
+
+    /**
+     * 生成高熵 JTI
+     *
+     * 使用随机字节构建唯一标识，降低可预测性与冲突风险。
+     *
+     * @return string
+     */
+    protected static function generateJti(): string
+    {
+        return 'jwt_' . bin2hex(random_bytes(16));
     }
 
     /**

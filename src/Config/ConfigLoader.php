@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Kode\Jwt\Config;
 
 class ConfigLoader
@@ -16,7 +18,7 @@ class ConfigLoader
      */
     public function __construct(array $config = [])
     {
-        $this->config = array_merge($this->getDefaultConfig(), $config);
+        $this->config = $this->mergeDistinct($this->getDefaultConfig(), $config);
     }
 
     /**
@@ -96,6 +98,12 @@ class ConfigLoader
                 'enabled' => true,
                 'listeners' => [],
             ],
+            'logging' => [
+                'enabled' => false,
+                'driver' => 'file',
+                'path' => './logs/kode-jwt.log',
+                'level' => 'info',
+            ],
         ];
     }
 
@@ -161,6 +169,30 @@ class ConfigLoader
      */
     public function merge(array $config): void
     {
-        $this->config = array_merge_recursive($this->config, $config);
+        $this->config = $this->mergeDistinct($this->config, $config);
+    }
+
+    /**
+     * 递归合并配置（后者覆盖前者）
+     *
+     * 该方法用于避免 array_merge_recursive 将标量合并为数组，
+     * 从而引发配置结构异常和类型不一致问题。
+     *
+     * @param array<string, mixed> $base 基础配置
+     * @param array<string, mixed> $override 覆盖配置
+     * @return array<string, mixed>
+     */
+    private function mergeDistinct(array $base, array $override): array
+    {
+        foreach ($override as $key => $value) {
+            if (is_array($value) && isset($base[$key]) && is_array($base[$key])) {
+                $base[$key] = $this->mergeDistinct($base[$key], $value);
+                continue;
+            }
+
+            $base[$key] = $value;
+        }
+
+        return $base;
     }
 }

@@ -46,4 +46,3 @@ final class PayloadTest extends TestCase
         Payload::fromArray(['uid' => 1]);
     }
 }
-

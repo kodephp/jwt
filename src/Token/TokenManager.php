@@ -2,12 +2,12 @@
 
 namespace Kode\Jwt\Token;
 
-use Kode\Jwt\Contract\StorageInterface;
+use Kode\Jwt\Contract\TokenManagerInterface;
 use Kode\Jwt\Contract\GuardInterface;
 use Kode\Jwt\Config\ConfigLoader;
-use Kode\Jwt\KodeJwt;
+use Kode\Jwt\Contract\StorageInterface;
 
-class TokenManager
+class TokenManager implements TokenManagerInterface
 {
     private StorageInterface $storage;
     private GuardInterface $guard;
@@ -24,9 +24,79 @@ class TokenManager
     }
 
     /**
+     * 生成Token
+     *
+     * @return array<string, mixed>
+     */
+    public function issue(Payload $payload): array
+    {
+        return $this->guard->issue($payload);
+    }
+
+    /**
+     * 验证Token
+     */
+    public function authenticate(string $token): Payload
+    {
+        return $this->guard->authenticate($token);
+    }
+
+    /**
+     * 刷新Token
+     *
+     * @return array<string, mixed>
+     */
+    public function refresh(string $token): array
+    {
+        return $this->guard->refresh($token);
+    }
+
+    /**
+     * 注销Token
+     */
+    public function invalidate(string $token): bool
+    {
+        return $this->guard->invalidate($token);
+    }
+
+    /**
+     * 检查Token是否唯一（用于SSO）
+     */
+    public function isUnique(string $uid, string $platform): bool
+    {
+        return $this->guard->isUnique($uid, $platform);
+    }
+
+    /**
+     * 注册Token
+     */
+    public function register(string $uid, string $platform, string $jti): void
+    {
+        $this->guard->register($uid, $platform, $jti);
+    }
+
+    /**
+     * 获取存储实例
+     */
+    public function getStorage(): StorageInterface
+    {
+        return $this->storage;
+    }
+
+    /**
+     * 获取配置
+     *
+     * @return array<string, mixed>
+     */
+    public function getConfig(): array
+    {
+        return $this->config->all();
+    }
+
+    /**
      * 获取用户的所有活跃Token
      *
-     * @return array<int, array>
+     * @return array<int, array<string, mixed>>
      */
     public function getUserTokens(string $uid, ?string $platform = null): array
     {
@@ -121,7 +191,9 @@ class TokenManager
                 if (is_array($tokenData) && isset($tokenData['token']) && is_string($tokenData['token'])) {
                     $revoked = $this->guard->invalidate($tokenData['token']);
                 } else {
-                    $ttl = is_array($tokenData) && isset($tokenData['exp']) ? max(1, (int) $tokenData['exp'] - time()) : 3600;
+                    $ttl = is_array($tokenData) && isset($tokenData['exp'])
+                        ? max(1, (int) $tokenData['exp'] - time())
+                        : 3600;
                     $revoked = $this->storage->blacklist($jti, $ttl);
                 }
 
@@ -143,7 +215,9 @@ class TokenManager
                     if (is_array($tokenData) && isset($tokenData['token']) && is_string($tokenData['token'])) {
                         $revoked = $this->guard->invalidate($tokenData['token']);
                     } else {
-                        $ttl = is_array($tokenData) && isset($tokenData['exp']) ? max(1, (int) $tokenData['exp'] - time()) : 3600;
+                        $ttl = is_array($tokenData) && isset($tokenData['exp'])
+                            ? max(1, (int) $tokenData['exp'] - time())
+                            : 3600;
                         $revoked = $this->storage->blacklist($jti, $ttl);
                     }
 
@@ -198,7 +272,8 @@ class TokenManager
      */
     public function cleanExpiredTokens(): int
     {
-        return $this->storage->cleanExpired();
+        $result = $this->storage->cleanExpired();
+        return $result ? 1 : 0;
     }
 
     /**
