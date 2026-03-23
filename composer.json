@@ -3,7 +3,7 @@
     "description": "为现代 PHP 应用提供安全、灵活、高性能的 JWT 身份验证解决方案，支持单点登录（SSO）、多点登录、黑名单管理、自动续期、多平台适配，兼容 FPM、Swoole、RoadRunner 等运行环境。",
     "type": "library",
     "license": "Apache-2.0",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "keywords": [
         "jwt",
         "sso",

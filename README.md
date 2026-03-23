@@ -785,14 +785,184 @@ class KodeJwt {}
 
 ---
 
-## 📈 未来规划
+## 🚀 高级特性
 
-- [ ] 支持 JWT 多签（Detached Signature）
-- [ ] 集成 OpenID Connect 支持
-- [ ] 提供 CLI 工具管理 Token，生成密钥对
-- [ ] 支持 JWT 与 OAuth2 混合模式
-- [ ] 提供 Prometheus 监控指标（Token 数量、刷新频率等）
-- [ ] 实现 JWT 密钥轮换机制，支持平滑过渡
+### JWT 多签（Detached Signature）
+
+支持多个签名者对同一 Payload 进行签名，适用于多方信任场景：
+
+```php
+use Kode\Jwt\Token\Builder;
+
+$builder = new Builder(['algo' => 'HS256']);
+$builder->setUid(123);
+$builder->setExpiration(time() + 3600);
+
+// 多签配置
+$signers = [
+    ['key' => 'secret_key_1', 'keyId' => 'signer_a'],
+    ['key' => 'secret_key_2', 'keyId' => 'signer_b'],
+];
+
+// 生成多签 JWS
+$multiSigToken = $builder->buildMultiSignature($signers);
+
+// 生成分离式签名
+$detachedSig = $builder->buildDetachedSignature($signers);
+```
+
+### OpenID Connect 支持
+
+集成 OpenID Connect 协议，支持 ID Token 生成和用户信息管理：
+
+```php
+use Kode\Jwt\OpenId\IdTokenBuilder;
+use Kode\Jwt\OpenId\UserInfo;
+
+// 构建 ID Token
+$idTokenBuilder = new IdTokenBuilder([
+    'secret' => 'your-secret',
+    'issuer' => 'https://your-app.com',
+]);
+
+$idTokenBuilder
+    ->setSubject('user-123')
+    ->setAudience('client-app-id')
+    ->setIssuer('https://your-app.com')
+    ->setNonce('random-nonce-value')
+    ->setAuthTime(time())
+    ->setScopes(['openid', 'profile', 'email']);
+
+$idToken = $idTokenBuilder->build();
+
+// 用户信息
+$userInfo = UserInfo::fromPayload($payload);
+echo $userInfo->email;
+echo $userInfo->name;
+```
+
+### OAuth2 混合模式
+
+支持 JWT 与 OAuth2 授权流程的混合使用：
+
+```php
+use Kode\Jwt\OAuth2\HybridProvider;
+
+$provider = new HybridProvider([
+    'secret' => 'your-secret',
+    'access_token_ttl' => 3600,
+    'refresh_token_ttl' => 86400,
+    'issuer' => 'https://your-app.com',
+]);
+
+// Authorization Code 模式
+$tokens = $provider->generateAuthorizationCodeTokens(
+    clientId: 'client-app',
+    userId: 123,
+    scopes: ['openid', 'profile'],
+    nonce: 'random-nonce'
+);
+
+// Implicit 模式
+$tokens = $provider->generateImplicitTokens(
+    clientId: 'client-app',
+    userId: 123,
+    scopes: ['openid'],
+    state: 'state-value'
+);
+
+// Client Credentials 模式
+$tokens = $provider->generateClientCredentialsTokens(
+    clientId: 'client-app',
+    scopes: ['api:read']
+);
+```
+
+### JWT 密钥轮换机制
+
+支持密钥平滑过渡，旧密钥在过渡期内仍可用于验证：
+
+```php
+use Kode\Jwt\KeyRotation\KeyRotationManager;
+use Kode\Jwt\Storage\MemoryStorage;
+
+$storage = new MemoryStorage();
+$rotationManager = new KeyRotationManager(
+    storage: $storage,
+    keyType: 'hmac',
+    defaultKeyLifetime: 2592000,  // 30 天
+    transitionPeriod: 604800      // 7 天过渡期
+);
+
+// 生成新主密钥
+$newKey = $rotationManager->generateNewKey();
+
+// 获取签名密钥（当前主密钥）
+$signingKey = $rotationManager->getSigningKey();
+
+// 获取验证密钥列表（主密钥 + 过渡期内旧密钥）
+$verificationKeys = $rotationManager->getVerificationKeys();
+
+// 自动轮换（主密钥即将过期时触发）
+$rotationManager->autoRotate(86400); // 提前 1 天轮换
+
+// 查看轮换状态
+$status = $rotationManager->getRotationStatus();
+```
+
+### Prometheus 监控指标
+
+提供 Token 相关的监控指标，便于集成 Prometheus：
+
+```php
+use Kode\Jwt\Metrics\PrometheusMetrics;
+
+$metrics = new PrometheusMetrics('kode_jwt');
+
+// 记录 Token 操作
+$metrics->recordTokenIssued('api', 'web');
+$metrics->recordTokenAuthenticated('api');
+$metrics->recordTokenRefreshed('api');
+$metrics->recordTokenInvalidated('api');
+$metrics->recordAuthenticationFailure('expired', 'api');
+
+// 更新统计值
+$metrics->setActiveTokens(150, 'api');
+$metrics->setBlacklistedTokens(12, 'api');
+
+// 计时操作
+$result = $metrics->timeOperation('authenticate', function() use ($token) {
+    return KodeJwt::authenticate($token);
+});
+
+// 导出 Prometheus 格式
+echo $metrics->export();
+// 输出:
+// # HELP kode_jwt_tokens_issued_total Total count of tokens_issued_total
+// # TYPE kode_jwt_tokens_issued_total counter
+// kode_jwt_tokens_issued_total{guard="api",platform="web"} 1
+```
+
+### CLI Token 管理
+
+通过命令行管理 Token：
+
+```bash
+# 生成 Token
+php bin/jwt token generate --uid=123 --username=john --platform=web
+
+# 验证 Token
+php bin/jwt token verify --token=eyJ...
+
+# 刷新 Token
+php bin/jwt token refresh --token=eyJ...
+
+# 注销 Token
+php bin/jwt token invalidate --token=eyJ...
+
+# 查看 Token 信息
+php bin/jwt token info --token=eyJ...
+```
 
 ---
 

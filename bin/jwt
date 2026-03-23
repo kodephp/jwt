@@ -16,6 +16,7 @@ if (file_exists($basePath . '/vendor/autoload.php')) {
 
 use Kode\Jwt\Console\InstallCommand;
 use Kode\Jwt\Console\KeyGenerateCommand;
+use Kode\Jwt\Console\TokenCommand;
 use Kode\Jwt\KodeJwt;
 
 KodeJwt::detectAndLoadConfig();
@@ -46,6 +47,23 @@ $commands = [
             'stdout' => '输出到标准输出',
             'file' => '保存到文件 (默认)',
             '--force' => '强制覆盖现有文件',
+        ],
+    ],
+    'token' => [
+        'alias' => ['t'],
+        'description' => '管理 JWT Token（生成、验证、刷新、注销）',
+        'usage' => 'php jwt token <操作> [选项]',
+        'options' => [
+            'generate' => '生成新 Token',
+            'verify' => '验证 Token',
+            'refresh' => '刷新 Token',
+            'invalidate' => '注销 Token',
+            'info' => '显示 Token 信息',
+            '--uid' => '用户 ID',
+            '--username' => '用户名',
+            '--platform' => '平台标识',
+            '--token' => 'Token 字符串',
+            '--guard' => '守卫名称',
         ],
     ],
     'help' => [
@@ -123,6 +141,10 @@ switch ($resolvedCommand) {
 
     case 'key':
         $exitCode = KeyGenerateCommand::run($args, $basePath);
+        break;
+
+    case 'token':
+        $exitCode = TokenCommand::run($args, $basePath);
         break;
 
     case 'help':

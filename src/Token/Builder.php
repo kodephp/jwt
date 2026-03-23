@@ -343,4 +343,143 @@ class Builder
 
         return rtrim(strtr(base64_encode($signature), '+/', '-_'), '=');
     }
+
+    /**
+     * 构建多签名的 JWS 格式
+     *
+     * @param array<array{key: string, keyId?: string}> $signers 签名者配置
+     * @return string JWS JSON 序列化字符串
+     */
+    public function buildMultiSignature(array $signers): string
+    {
+        if (!isset($this->claims['iat'])) {
+            $this->setIssuedAt(time());
+        }
+
+        if (!isset($this->claims['exp'])) {
+            throw new JwtException('Expiration time (exp) is required');
+        }
+
+        if (!isset($this->claims['jti'])) {
+            $this->setId(self::generateJti());
+        }
+
+        $header = $this->encodePart($this->headers);
+        $payload = $this->encodePart($this->claims);
+        $signatures = [];
+
+        foreach ($signers as $index => $signer) {
+            $key = $signer['key'] ?? '';
+            $keyId = $signer['keyId'] ?? "signer_{$index}";
+            $algorithm = $this->headers['alg'] ?? 'HS256';
+
+            $signature = $this->signWithKey("{$header}.{$payload}", $key, $algorithm);
+            $sigHeader = ['alg' => $algorithm, 'kid' => $keyId];
+            $encodedSigHeader = $this->encodePart($sigHeader);
+
+            $signatures[] = [
+                'protected' => $encodedSigHeader,
+                'signature' => $signature
+            ];
+        }
+
+        return json_encode([
+            'payload' => $payload,
+            'signatures' => $signatures
+        ], JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
+     * 使用指定密钥创建签名
+     */
+    private function signWithKey(string $data, string $key, string $algorithm): string
+    {
+        switch ($algorithm) {
+            case 'HS256':
+                $hash = hash_hmac('sha256', $data, $key, true);
+                break;
+            case 'HS384':
+                $hash = hash_hmac('sha384', $data, $key, true);
+                break;
+            case 'HS512':
+                $hash = hash_hmac('sha512', $data, $key, true);
+                break;
+            case 'RS256':
+                $hash = $this->signRsaWithKey($data, $key, OPENSSL_ALGO_SHA256);
+                break;
+            case 'RS384':
+                $hash = $this->signRsaWithKey($data, $key, OPENSSL_ALGO_SHA384);
+                break;
+            case 'RS512':
+                $hash = $this->signRsaWithKey($data, $key, OPENSSL_ALGO_SHA512);
+                break;
+            default:
+                throw new JwtException("Unsupported algorithm for multi-signature: {$algorithm}");
+        }
+
+        return rtrim(strtr(base64_encode($hash), '+/', '-_'), '=');
+    }
+
+    /**
+     * 使用指定密钥创建 RSA 签名
+     */
+    private function signRsaWithKey(string $data, string $key, int $opensslAlgo): string
+    {
+        $privateKey = openssl_pkey_get_private($key);
+
+        if (!$privateKey) {
+            throw new JwtException('Invalid private key for RSA signature');
+        }
+
+        $signature = '';
+        $result = openssl_sign($data, $signature, $privateKey, $opensslAlgo);
+
+        if (!$result) {
+            throw new JwtException('Failed to create RSA signature');
+        }
+
+        return $signature;
+    }
+
+    /**
+     * 创建 detached 签名（仅签名部分，用于分离式签名）
+     *
+     * @param array<array{key: string, keyId?: string}> $signers 签名者配置
+     * @return string 签名的 base64url 编码
+     */
+    public function buildDetachedSignature(array $signers): string
+    {
+        if (!isset($this->claims['iat'])) {
+            $this->setIssuedAt(time());
+        }
+
+        if (!isset($this->claims['exp'])) {
+            throw new JwtException('Expiration time (exp) is required');
+        }
+
+        if (!isset($this->claims['jti'])) {
+            $this->setId(self::generateJti());
+        }
+
+        $header = $this->encodePart($this->headers);
+        $payload = $this->encodePart($this->claims);
+        $signatures = [];
+
+        foreach ($signers as $index => $signer) {
+            $key = $signer['key'] ?? '';
+            $keyId = $signer['keyId'] ?? "signer_{$index}";
+            $algorithm = $this->headers['alg'] ?? 'HS256';
+
+            $signature = $this->signWithKey("{$header}.{$payload}", $key, $algorithm);
+            $sigHeader = ['alg' => $algorithm, 'kid' => $keyId];
+            $encodedSigHeader = $this->encodePart($sigHeader);
+
+            $signatures[] = [
+                'protected' => $encodedSigHeader,
+                'signature' => $signature
+            ];
+        }
+
+        return json_encode($signatures, JSON_UNESCAPED_SLASHES);
+    }
 }
