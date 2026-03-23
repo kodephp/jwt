@@ -26,6 +26,7 @@ class TokenCommand
 
     protected ?string $configPath = null;
 
+    /** @var array<string, mixed> */
     protected array $payload = [];
 
     protected string $guard = 'api';
@@ -37,6 +38,8 @@ class TokenCommand
 
     /**
      * 执行命令
+     *
+     * @param array<int, string> $args 命令参数
      */
     public function handle(array $args = []): int
     {
