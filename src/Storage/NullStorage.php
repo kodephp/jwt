@@ -138,4 +138,19 @@ class NullStorage implements StorageInterface
             'stats' => 'null storage always returns empty stats',
         ];
     }
+
+    public function touch(string $key, int $ttl): bool
+    {
+        return true;
+    }
+
+    public function getRemainingTtl(string $key): int
+    {
+        return -1;
+    }
+
+    public function clear(): bool
+    {
+        return true;
+    }
 }

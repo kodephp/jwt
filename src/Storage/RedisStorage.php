@@ -230,6 +230,28 @@ class RedisStorage implements StorageInterface
         ];
     }
 
+    public function touch(string $key, int $ttl): bool
+    {
+        $key = $this->getKey($key);
+        return (bool) $this->redis->expire($key, $ttl);
+    }
+
+    public function getRemainingTtl(string $key): int
+    {
+        $key = $this->getKey($key);
+        $ttl = $this->redis->ttl($key);
+        return $ttl >= 0 ? $ttl : -2;
+    }
+
+    public function clear(): bool
+    {
+        $keys = $this->redis->keys($this->prefix . '*');
+        if (empty($keys)) {
+            return true;
+        }
+        return (bool) $this->redis->del($keys);
+    }
+
     /**
      * 获取Redis实例
      */

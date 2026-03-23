@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Kode\Jwt\Storage;
 
 use Kode\Jwt\Contract\StorageInterface;
@@ -10,43 +12,33 @@ class MemoryStorage implements StorageInterface
      * @var array<string, array{value: mixed, expires_at: int}>
      */
     protected array $storage = [];
+
     /**
      * @var array<string, int>
      */
     protected array $blacklist = [];
+
     protected int $limit;
 
-    /**
-     * 构造函数
-     *
-     * @param array<string, mixed> $config 配置数组
-     */
     public function __construct(array $config = [])
     {
         $this->limit = $config['limit'] ?? 10000;
     }
 
-    /**
-     * 设置键值对
-     */
-    public function set(string $key, mixed $value, int $ttl = 0): bool
+    public function set(string $key, mixed $value, int $ttl = 3600): bool
     {
-        // 如果达到限制，移除最旧的项
         if (count($this->storage) >= $this->limit) {
             array_shift($this->storage);
         }
 
         $this->storage[$key] = [
             'value' => $value,
-            'expires_at' => $ttl > 0 ? time() + $ttl : 0,
+            'expires_at' => $ttl <= 0 ? 0 : time() + $ttl,
         ];
 
         return true;
     }
 
-    /**
-     * 获取键对应的值
-     */
     public function get(string $key, mixed $default = null): mixed
     {
         if (!isset($this->storage[$key])) {
@@ -55,7 +47,6 @@ class MemoryStorage implements StorageInterface
 
         $item = $this->storage[$key];
 
-        // 检查是否过期
         if ($item['expires_at'] > 0 && time() > $item['expires_at']) {
             unset($this->storage[$key]);
             return $default;
@@ -64,26 +55,28 @@ class MemoryStorage implements StorageInterface
         return $item['value'];
     }
 
-    /**
-     * 删除键
-     */
     public function delete(string $key): bool
     {
         unset($this->storage[$key]);
         return true;
     }
 
-    /**
-     * 检查键是否存在
-     */
     public function has(string $key): bool
     {
-        return isset($this->storage[$key]);
+        if (!isset($this->storage[$key])) {
+            return false;
+        }
+
+        $item = $this->storage[$key];
+
+        if ($item['expires_at'] > 0 && time() > $item['expires_at']) {
+            unset($this->storage[$key]);
+            return false;
+        }
+
+        return true;
     }
 
-    /**
-     * 批量设置键值对
-     */
     public function setMultiple(array $values, int $ttl = 0): bool
     {
         foreach ($values as $key => $value) {
@@ -93,9 +86,6 @@ class MemoryStorage implements StorageInterface
         return true;
     }
 
-    /**
-     * 批量获取键值对
-     */
     public function getMultiple(array $keys, mixed $default = null): array
     {
         $results = [];
@@ -107,9 +97,6 @@ class MemoryStorage implements StorageInterface
         return $results;
     }
 
-    /**
-     * 批量删除键
-     */
     public function deleteMultiple(array $keys): bool
     {
         foreach ($keys as $key) {
@@ -119,25 +106,18 @@ class MemoryStorage implements StorageInterface
         return true;
     }
 
-    /**
-     * 将键加入黑名单
-     */
     public function blacklist(string $jti, int $ttl = 3600): bool
     {
         $this->blacklist[$jti] = time() + $ttl;
         return true;
     }
 
-    /**
-     * 检查键是否在黑名单中
-     */
     public function isBlacklisted(string $jti): bool
     {
         if (!isset($this->blacklist[$jti])) {
             return false;
         }
 
-        // 检查是否过期
         if (time() > $this->blacklist[$jti]) {
             unset($this->blacklist[$jti]);
             return false;
@@ -146,15 +126,11 @@ class MemoryStorage implements StorageInterface
         return true;
     }
 
-    /**
-     * 清理过期项
-     */
-    public function cleanExpired(): bool
+    public function cleanExpired(): bool|int
     {
         $count = 0;
         $now = time();
 
-        // 清理过期的存储项
         foreach ($this->storage as $key => $item) {
             if ($item['expires_at'] > 0 && $now > $item['expires_at']) {
                 unset($this->storage[$key]);
@@ -162,7 +138,6 @@ class MemoryStorage implements StorageInterface
             }
         }
 
-        // 清理过期的黑名单项
         foreach ($this->blacklist as $jti => $expiresAt) {
             if ($now > $expiresAt) {
                 unset($this->blacklist[$jti]);
@@ -170,18 +145,58 @@ class MemoryStorage implements StorageInterface
             }
         }
 
-        return true;
+        return $count;
     }
 
-    /**
-     * 获取存储统计信息
-     */
     public function getStats(): array
     {
+        $this->cleanExpired();
+
         return [
             'storage_count' => count($this->storage),
             'blacklist_count' => count($this->blacklist),
             'limit' => $this->limit,
+            'memory_usage' => memory_get_usage(true),
         ];
+    }
+
+    public function touch(string $key, int $ttl): bool
+    {
+        if (!isset($this->storage[$key])) {
+            return false;
+        }
+
+        $item = $this->storage[$key];
+
+        if ($item['expires_at'] > 0 && time() > $item['expires_at']) {
+            unset($this->storage[$key]);
+            return false;
+        }
+
+        $this->storage[$key]['expires_at'] = time() + $ttl;
+        return true;
+    }
+
+    public function getRemainingTtl(string $key): int
+    {
+        if (!isset($this->storage[$key])) {
+            return -2;
+        }
+
+        $item = $this->storage[$key];
+
+        if ($item['expires_at'] <= 0) {
+            return -1;
+        }
+
+        $remaining = $item['expires_at'] - time();
+        return $remaining > 0 ? $remaining : -2;
+    }
+
+    public function clear(): bool
+    {
+        $this->storage = [];
+        $this->blacklist = [];
+        return true;
     }
 }

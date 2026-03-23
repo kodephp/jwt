@@ -12,7 +12,7 @@ composer.lock
 /.vscode/
 /.vs/
 nbproject/
-.trae
+/.trae/
 /.cursor
 
 # OS

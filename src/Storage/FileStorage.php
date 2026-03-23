@@ -279,4 +279,77 @@ class FileStorage implements StorageInterface
             'file_count' => count($files),
         ];
     }
+
+    public function touch(string $key, int $ttl): bool
+    {
+        $filePath = $this->getFilePath($key);
+
+        if (!file_exists($filePath)) {
+            return false;
+        }
+
+        $serializedData = file_get_contents($filePath);
+
+        if ($serializedData === false) {
+            return false;
+        }
+
+        $data = json_decode($serializedData, true);
+
+        if ($data === null) {
+            return false;
+        }
+
+        if ($data['expires_at'] > 0 && $data['expires_at'] < time()) {
+            $this->delete($key);
+            return false;
+        }
+
+        $data['expires_at'] = time() + $ttl;
+        $result = file_put_contents($filePath, json_encode($data, JSON_PRETTY_PRINT), LOCK_EX);
+
+        return $result !== false;
+    }
+
+    public function getRemainingTtl(string $key): int
+    {
+        $filePath = $this->getFilePath($key);
+
+        if (!file_exists($filePath)) {
+            return -2;
+        }
+
+        $serializedData = file_get_contents($filePath);
+
+        if ($serializedData === false) {
+            return -2;
+        }
+
+        $data = json_decode($serializedData, true);
+
+        if ($data === null) {
+            return -2;
+        }
+
+        if ($data['expires_at'] <= 0) {
+            return -1;
+        }
+
+        $remaining = $data['expires_at'] - time();
+        return $remaining > 0 ? $remaining : -2;
+    }
+
+    public function clear(): bool
+    {
+        $files = glob($this->path . '*' . $this->extension);
+        $success = true;
+
+        foreach ($files as $file) {
+            if (!unlink($file)) {
+                $success = false;
+            }
+        }
+
+        return $success;
+    }
 }
