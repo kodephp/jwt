@@ -10,7 +10,8 @@ use Kode\Jwt\Exception\JwtException;
 final class MultiSignature
 {
     /**
-     * @param array<array{key: string, secret?: string, publicKey?: string, privateKey?: string, keyId?: string}> $signers
+     * @param array<array{key: string, secret?: string, publicKey?: string,
+     *     privateKey?: string, keyId?: string}> $signers
      */
     public function __construct(
         private array $signers,

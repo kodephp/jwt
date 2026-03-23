@@ -110,7 +110,14 @@ class TokenCommand
             }
 
             // 识别操作
-            if (in_array($arg, ['generate', 'gen', 'create', 'verify', 'validate', 'auth', 'refresh', 'renew', 'invalidate', 'revoke', 'logout', 'info', 'decode', 'help'], true)) {
+            $actions = [
+                'generate', 'gen', 'create',
+                'verify', 'validate', 'auth',
+                'refresh', 'renew',
+                'invalidate', 'revoke', 'logout',
+                'info', 'decode', 'help',
+            ];
+            if (in_array($arg, $actions, true)) {
                 $this->action = $arg;
             }
         }
