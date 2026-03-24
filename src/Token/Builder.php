@@ -14,6 +14,7 @@ class Builder
      * @var array<string, mixed>
      */
     protected array $claims = [];
+
     /**
      * @var array<string, mixed>
      */
@@ -21,7 +22,9 @@ class Builder
         'typ' => 'JWT',
         'alg' => 'HS256'
     ];
+
     protected string $secret;
+
     /**
      * @var array<string, mixed>
      */
