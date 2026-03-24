@@ -1,20 +1,24 @@
 <?php
 
+declare(strict_types=1);
+
 /**
- * 存储驱动使用示例
- * 展示如何使用不同的存储后端
+ * Kode JWT 存储驱动使用示例
+ *
+ * 展示如何使用不同的存储后端：内存、Redis、文件等
  */
 
-// 引入自动加载文件
 require_once __DIR__ . '/../vendor/autoload.php';
 
 use Kode\Jwt\KodeJwt;
 use Kode\Jwt\Token\Payload;
+use Kode\Jwt\Storage\MemoryStorage;
+use Kode\Jwt\Enum\StorageType;
 
 echo "=== Kode JWT 存储驱动使用示例 ===\n\n";
 
+// 1. 内存存储
 echo "--- 1. 内存存储 (Memory Storage) ---\n\n";
-
 KodeJwt::init([
     'guards' => [
         'api' => [
@@ -22,27 +26,20 @@ KodeJwt::init([
             'storage' => 'memory',
             'blacklist_enabled' => true,
             'refresh_enabled' => true,
-            'refresh_ttl' => 20160,
-            'ttl' => 1440,
-            'algo' => 'HS256',
-            'secret' => 'example_secret_key_for_memory',
+            'secret' => 'memory-secret-key',
         ],
     ],
     'storage' => [
-        'memory' => [
-            'limit' => 10000,
-        ]
+        'memory' => ['limit' => 10000],
     ],
 ]);
 
 $now = time();
-$ttl = 1440;
-
 $payload = Payload::create(
     uid: 1001,
     username: 'memory_user',
     platform: 'web',
-    exp: $now + $ttl,
+    exp: $now + 3600,
     iat: $now,
     jti: bin2hex(random_bytes(16)),
     roles: ['user'],
@@ -50,25 +47,19 @@ $payload = Payload::create(
 );
 
 $token = KodeJwt::issue($payload)['token'];
-echo "使用内存存储生成的 Token: {$token}\n";
-
+echo "Token 生成成功: " . substr($token, 0, 50) . "...\n";
 $verified = KodeJwt::authenticate($token);
-echo "Token 验证成功，用户: {$verified->username}\n\n";
+echo "验证成功，用户: {$verified->username}\n\n";
 
-echo "--- 2. Redis 存储示例 (需要 ext-redis) ---\n\n";
-
+// 2. Redis 存储
+echo "--- 2. Redis 存储 (需要 ext-redis) ---\n\n";
 try {
     KodeJwt::init([
         'guards' => [
             'api' => [
                 'driver' => 'sso',
                 'storage' => 'redis',
-                'blacklist_enabled' => true,
-                'refresh_enabled' => true,
-                'refresh_ttl' => 20160,
-                'ttl' => 1440,
-                'algo' => 'HS256',
-                'secret' => 'example_secret_key_for_redis',
+                'secret' => 'redis-secret-key',
             ],
         ],
         'storage' => [
@@ -78,159 +69,87 @@ try {
                 'password' => '',
                 'database' => 0,
                 'prefix' => 'kode_jwt:',
-                'timeout' => 2.0,
-                'read_timeout' => 60.0,
             ]
         ],
     ]);
-
-    $now = time();
-    $ttl = 1440;
 
     $payload = Payload::create(
         uid: 1002,
         username: 'redis_user',
         platform: 'app',
-        exp: $now + $ttl,
-        iat: $now,
+        exp: time() + 3600,
+        iat: time(),
         jti: bin2hex(random_bytes(16)),
-        roles: ['user', 'vip'],
-        perms: ['read', 'write']
+        roles: ['user', 'vip']
     );
 
     $token = KodeJwt::issue($payload)['token'];
-    echo "使用 Redis 存储生成的 Token: {$token}\n";
-
+    echo "Redis Token: " . substr($token, 0, 50) . "...\n";
     $verified = KodeJwt::authenticate($token);
-    echo "Token 验证成功，用户: {$verified->username}\n";
-
-    $tokenKey = "token:{$verified->jti}";
-    echo "Token 在 Redis 中的键: {$tokenKey}\n\n";
-
-} catch (Exception $e) {
-    echo "Redis 连接失败: " . $e->getMessage() . "\n";
-    echo "请确保 Redis 服务已启动并安装 ext-redis 扩展\n\n";
+    echo "验证成功，用户: {$verified->username}\n\n";
+} catch (\Exception $e) {
+    echo "Redis 连接失败: {$e->getMessage()}\n";
+    echo "请确保 Redis 服务已启动并安装 ext-redis\n\n";
 }
 
-echo "--- 3. 文件存储示例 ---\n\n";
+// 3. 文件存储
+echo "--- 3. 文件存储 (File Storage) ---\n\n";
+$storageDir = __DIR__ . '/runtime/jwt_storage';
+if (!is_dir($storageDir)) {
+    mkdir($storageDir, 0755, true);
+}
 
 KodeJwt::init([
     'guards' => [
         'api' => [
             'driver' => 'sso',
             'storage' => 'file',
-            'blacklist_enabled' => true,
-            'refresh_enabled' => true,
-            'refresh_ttl' => 20160,
-            'ttl' => 1440,
-            'algo' => 'HS256',
-            'secret' => 'example_secret_key_for_file',
+            'secret' => 'file-secret-key',
         ],
     ],
     'storage' => [
         'file' => [
-            'directory' => __DIR__ . '/runtime/jwt_storage',
+            'directory' => $storageDir,
             'prefix' => 'jwt_',
         ]
     ],
 ]);
 
-$storageDir = __DIR__ . '/runtime/jwt_storage';
-if (!is_dir($storageDir)) {
-    mkdir($storageDir, 0755, true);
-}
-
-$now = time();
-$ttl = 1440;
-
 $payload = Payload::create(
     uid: 1003,
     username: 'file_user',
     platform: 'desktop',
-    exp: $now + $ttl,
-    iat: $now,
+    exp: time() + 3600,
+    iat: time(),
     jti: bin2hex(random_bytes(16)),
-    roles: ['user', 'admin'],
-    perms: ['read', 'write', 'delete']
+    roles: ['user', 'admin']
 );
 
 $token = KodeJwt::issue($payload)['token'];
-echo "使用文件存储生成的 Token: {$token}\n";
-
+echo "文件存储 Token: " . substr($token, 0, 50) . "...\n";
 $verified = KodeJwt::authenticate($token);
-echo "Token 验证成功，用户: {$verified->username}\n";
+echo "验证成功，用户: {$verified->username}\n\n";
 
-$tokenFile = $storageDir . '/token_' . md5($verified->jti) . '.json';
-if (file_exists($tokenFile)) {
-    $storedData = json_decode(file_get_contents($tokenFile), true);
-    echo "Token 数据已保存到文件\n";
-    echo "文件路径: {$tokenFile}\n";
-}
+// 4. 存储接口增强功能
+echo "--- 4. 存储接口增强功能 ---\n\n";
+$storage = new MemoryStorage(['limit' => 100]);
 
-echo "\n--- 4. 多存储切换示例 ---\n\n";
+$storage->set('test_key', 'test_value', 3600);
+echo "设置键值: test_key = test_value\n";
 
-function getStorageConfig(string $type): array
-{
-    $configs = [
-        'memory' => [
-            'driver' => 'sso',
-            'storage' => 'memory',
-            'blacklist_enabled' => true,
-            'refresh_enabled' => true,
-            'refresh_ttl' => 20160,
-            'ttl' => 1440,
-            'algo' => 'HS256',
-            'secret' => 'shared_secret_key',
-        ],
-        'file' => [
-            'driver' => 'sso',
-            'storage' => 'file',
-            'blacklist_enabled' => true,
-            'refresh_enabled' => true,
-            'refresh_ttl' => 20160,
-            'ttl' => 1440,
-            'algo' => 'HS256',
-            'secret' => 'shared_secret_key',
-        ],
-    ];
+$remainingTtl = $storage->getRemainingTtl('test_key');
+echo "剩余 TTL: {$remainingTtl} 秒\n";
 
-    $config = $configs[$type] ?? $configs['memory'];
-    $config['storage'] = $type;
+$storage->touch('test_key', 7200);
+echo "TTL 已延长到 7200 秒\n";
 
-    if ($type === 'file') {
-        $config['storage_config'] = [
-            'directory' => __DIR__ . '/runtime/jwt_storage',
-            'prefix' => 'jwt_',
-        ];
-    }
+$stats = $storage->getStats();
+echo "存储统计: storage_count={$stats['storage_count']}, limit={$stats['limit']}\n\n";
 
-    return $config;
-}
+// 5. 存储类型枚举
+echo "--- 5. 存储类型枚举 ---\n\n";
+echo "Redis 是否持久化: " . (StorageType::REDIS->isPersistent() ? '是' : '否') . "\n";
+echo "内存存储是否持久化: " . (StorageType::MEMORY->isPersistent() ? '是' : '否') . "\n";
+echo "Redis 需要扩展: " . (StorageType::REDIS->requiresExtension() ?? '无') . "\n\n";
 
-foreach (['memory', 'file'] as $storageType) {
-    $config = getStorageConfig($storageType);
-    KodeJwt::init([
-        'guards' => [
-            'api' => $config,
-        ],
-    ]);
-
-    $now = time();
-    $ttl = 1440;
-
-    $payload = Payload::create(
-        uid: 2000 + rand(1, 100),
-        username: "{$storageType}_user_" . time(),
-        platform: $storageType,
-        exp: $now + $ttl,
-        iat: $now,
-        jti: bin2hex(random_bytes(16)),
-        roles: ['user'],
-        perms: ['read']
-    );
-
-    $token = KodeJwt::issue($payload)['token'];
-    echo "使用 {$storageType} 存储生成的 Token: " . substr($token, 0, 50) . "...\n";
-}
-
-echo "\n=== 存储驱动使用示例执行完成 ===\n";
+echo "=== 存储驱动示例执行完成 ===\n";

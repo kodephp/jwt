@@ -1,17 +1,23 @@
 <?php
 
+declare(strict_types=1);
+
 /**
- * Kode JWT 包使用示例
+ * Kode JWT 基础使用示例
+ *
+ * 展示 JWT Token 的生成、验证、刷新、注销等核心功能
  */
 
-// 引入自动加载文件
 require_once __DIR__ . '/../vendor/autoload.php';
 
 use Kode\Jwt\KodeJwt;
 use Kode\Jwt\Token\Payload;
 
-// 设置配置
-KodeJwt::setConfig([
+echo "=== Kode JWT 基础使用示例 ===\n\n";
+
+// 1. 初始化配置
+echo "1. 初始化配置...\n";
+KodeJwt::init([
     'guards' => [
         'api' => [
             'driver' => 'sso',
@@ -21,104 +27,70 @@ KodeJwt::setConfig([
             'refresh_ttl' => 20160,
             'ttl' => 1440,
             'algo' => 'HS256',
-            'secret' => 'example_secret_key',
+            'secret' => 'your-secret-key-here',
         ],
     ],
     'storage' => [
-        'memory' => [
-            'limit' => 10000,
-        ]
+        'memory' => ['limit' => 10000],
+    ],
+    'logging' => [
+        'enabled' => false,
     ],
 ]);
+echo "配置初始化完成\n\n";
 
+// 2. 创建 Payload 并生成 Token
+echo "2. 创建 Payload 并生成 Token...\n";
+$now = time();
+$payload = Payload::create(
+    uid: 1001,
+    username: 'john_doe',
+    platform: 'web',
+    exp: $now + 3600,
+    iat: $now,
+    jti: bin2hex(random_bytes(16)),
+    roles: ['user', 'admin'],
+    perms: ['read', 'write', 'delete']
+);
+
+$result = KodeJwt::issue($payload);
+$token = $result['token'];
+echo "Token 生成成功\n";
+echo "过期时间: {$result['expires_in']} 秒\n\n";
+
+// 3. 验证 Token
+echo "3. 验证 Token...\n";
+$verified = KodeJwt::authenticate($token);
+echo "验证成功\n";
+echo "用户 ID: {$verified->uid}\n";
+echo "用户名: {$verified->username}\n";
+echo "角色: " . implode(', ', $verified->roles ?? []) . "\n\n";
+
+// 4. 刷新 Token
+echo "4. 刷新 Token...\n";
+$refreshed = KodeJwt::refresh($token);
+echo "Token 刷新成功\n";
+echo "新 Token: " . substr($refreshed['token'], 0, 50) . "...\n\n";
+
+// 5. 注销 Token
+echo "5. 注销原始 Token...\n";
+KodeJwt::invalidate($token);
+echo "Token 已注销\n\n";
+
+// 6. 验证已注销的 Token
+echo "6. 验证已注销的 Token...\n";
 try {
-    echo "=== Kode JWT 使用示例 ===\n\n";
-
-    // 1. 创建 Payload
-    echo "1. 创建 Payload...\n";
-    $payload = new Payload(
-        uid: 123,
-        username: 'john_doe',
-        platform: 'app',
-        exp: time() + 3600, // 1小时后过期
-        iat: time(),
-        jti: uniqid('jwt_', true),
-        roles: ['user', 'admin'],
-        perms: ['read', 'write', 'delete'],
-        custom: ['department' => 'IT', 'level' => 5]
-    );
-    
-    echo "Payload 创建成功\n\n";
-
-    // 2. 生成 Token
-    echo "2. 生成 Token...\n";
-    $result = KodeJwt::issue($payload);
-    $token = $result['token'];
-    
-    echo "Token 生成成功:\n";
-    echo "Token: {$token}\n";
-    echo "Expires in: {$result['expires_in']} seconds\n";
-    echo "Refresh TTL: {$result['refresh_ttl']} seconds\n\n";
-
-    // 3. 验证 Token
-    echo "3. 验证 Token...\n";
-    $verifiedPayload = KodeJwt::authenticate($token);
-    
-    echo "Token 验证成功:\n";
-    echo "User ID: {$verifiedPayload->uid}\n";
-    echo "Username: {$verifiedPayload->username}\n";
-    echo "Platform: {$verifiedPayload->platform}\n";
-    echo "Roles: " . implode(', ', $verifiedPayload->roles) . "\n";
-    echo "Permissions: " . implode(', ', $verifiedPayload->perms) . "\n";
-    echo "Custom data: " . json_encode($verifiedPayload->custom) . "\n\n";
-
-    // 4. 刷新 Token
-    echo "4. 刷新 Token...\n";
-    $refreshResult = KodeJwt::refresh($token);
-    $newToken = $refreshResult['token'];
-    
-    echo "Token 刷新成功:\n";
-    echo "New Token: {$newToken}\n";
-    echo "Expires in: {$refreshResult['expires_in']} seconds\n\n";
-
-    // 5. 验证新 Token
-    echo "5. 验证新 Token...\n";
-    $newPayload = KodeJwt::authenticate($newToken);
-    
-    echo "新 Token 验证成功:\n";
-    echo "User ID: {$newPayload->uid}\n";
-    echo "Username: {$newPayload->username}\n";
-    echo "JTI (旧): {$verifiedPayload->jti}\n";
-    echo "JTI (新): {$newPayload->jti}\n\n";
-
-    // 6. 注销 Token
-    echo "6. 注销原始 Token...\n";
-    $invalidated = KodeJwt::invalidate($token);
-    
-    echo "Token 注销" . ($invalidated ? "成功" : "失败") . "\n";
-
-    // 7. 尝试使用已注销的 Token
-    echo "7. 尝试使用已注销的 Token...\n";
-    try {
-        KodeJwt::authenticate($token);
-        echo "ERROR: 已注销的 Token 仍然有效!\n";
-    } catch (\Kode\Jwt\Exception\TokenBlacklistedException $e) {
-        echo "SUCCESS: 已注销的 Token 被正确拒绝\n";
-        echo "错误信息: " . $e->getMessage() . "\n\n";
-    }
-
-    // 8. 使用新 Token
-    echo "8. 使用新 Token...\n";
-    $finalPayload = KodeJwt::authenticate($newToken);
-    
-    echo "新 Token 仍然有效:\n";
-    echo "User ID: {$finalPayload->uid}\n";
-    echo "Username: {$finalPayload->username}\n\n";
-
-    echo "=== 所有示例执行完成 ===\n";
-
-} catch (\Exception $e) {
-    echo "错误: " . $e->getMessage() . "\n";
-    echo "文件: " . $e->getFile() . "\n";
-    echo "行号: " . $e->getLine() . "\n";
+    KodeJwt::authenticate($token);
+    echo "错误: 已注销的 Token 不应该有效\n";
+} catch (\Kode\Jwt\Exception\TokenBlacklistedException $e) {
+    echo "正确: 已注销的 Token 被拒绝\n";
+    echo "异常信息: {$e->getMessage()}\n\n";
 }
+
+// 7. 使用刷新后的 Token
+echo "7. 使用刷新后的 Token...\n";
+$verifiedNew = KodeJwt::authenticate($refreshed['token']);
+echo "刷新后的 Token 仍然有效\n";
+echo "用户 ID: {$verifiedNew->uid}\n\n";
+
+echo "=== 基础示例执行完成 ===\n";

@@ -1,146 +1,122 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * Kode JWT 高级使用示例
- * 展示如何使用增强的Payload功能
+ *
+ * 展示多签、OpenID Connect、OAuth2、密钥轮换、Prometheus 监控等高级功能
  */
 
-// 引入自动加载文件
 require_once __DIR__ . '/../vendor/autoload.php';
 
 use Kode\Jwt\KodeJwt;
 use Kode\Jwt\Token\Payload;
+use Kode\Jwt\Token\Builder;
+use Kode\Jwt\Enum\Algorithm;
+use Kode\Jwt\Enum\StorageType;
+use Kode\Jwt\OAuth2\HybridProvider;
+use Kode\Jwt\Metrics\PrometheusMetrics;
+use Kode\Jwt\Support\PhpFeature;
 
-// 设置配置
+echo "=== Kode JWT 高级使用示例 ===\n\n";
+
+// 1. PHP 版本特性检测
+echo "1. PHP 版本特性检测...\n";
+$phpInfo = PhpFeature::getVersionInfo();
+echo "PHP 版本: {$phpInfo['version']}\n";
+echo "支持枚举: " . ($phpInfo['features']['enum'] ? '是' : '否') . "\n";
+echo "支持 readonly 类: " . ($phpInfo['features']['readonly_class'] ? '是' : '否') . "\n";
+echo "支持管道操作符: " . ($phpInfo['features']['pipe_operator'] ? '是' : '否') . "\n\n";
+
+// 2. 枚举使用示例
+echo "2. 枚举使用示例...\n";
+$hmacAlgos = array_map(fn(Algorithm $a) => $a->value, Algorithm::hmacAlgorithms());
+echo "HMAC 算法: " . implode(', ', $hmacAlgos) . "\n";
+echo "RS256 是否为非对称算法: " . (Algorithm::RS256->isAsymmetric() ? '是' : '否') . "\n";
+echo "Redis 存储是否持久化: " . (StorageType::REDIS->isPersistent() ? '是' : '否') . "\n\n";
+
+// 3. OAuth2 混合模式
+echo "3. OAuth2 混合模式示例...\n";
 KodeJwt::init([
-    'guards' => [
-        'api' => [
-            'driver' => 'sso',
-            'storage' => 'memory',
-            'blacklist_enabled' => true,
-            'refresh_enabled' => true,
-            'refresh_ttl' => 20160,
-            'ttl' => 1440,
-            'algo' => 'HS256',
-            'secret' => 'example_secret_key_for_advanced_usage',
-        ],
-    ],
-    'storage' => [
-        'memory' => [
-            'limit' => 10000,
-        ]
-    ],
+    'guards' => ['api' => ['driver' => 'sso', 'storage' => 'memory', 'secret' => 'oauth2-secret']],
+    'storage' => ['memory' => ['limit' => 1000]],
 ]);
 
-try {
-    echo "=== Kode JWT 高级使用示例 ===\n\n";
+$oauth2Provider = new HybridProvider([
+    'secret' => 'oauth2-secret-key',
+    'access_token_ttl' => 3600,
+    'issuer' => 'https://example.com',
+]);
 
-    // 1. 使用create方法创建包含数组自定义数据的Payload
-    echo "1. 使用create方法创建包含数组自定义数据的Payload...\n";
-    $payload1 = Payload::create(
-        uid: 456,
-        username: 'jane_doe',
-        platform: 'web',
-        exp: time() + 3600,
-        iat: time(),
-        jti: uniqid('jwt_', true),
-        roles: ['user', 'editor'],
-        perms: ['read', 'write'],
-        customData: [
-            'department' => 'Marketing',
-            'level' => 3,
-            'preferences' => ['theme' => 'dark', 'language' => 'zh-CN']
-        ]
-    );
-    
-    echo "Payload 创建成功\n";
-    echo "自定义数据: " . json_encode($payload1->getCustomData()) . "\n\n";
+$tokens = $oauth2Provider->generateAuthorizationCodeTokens(
+    clientId: 'client-app',
+    userId: 12345,
+    scopes: ['openid', 'profile']
+);
+echo "Access Token: " . substr($tokens->accessToken, 0, 50) . "...\n";
+echo "Token 类型: {$tokens->tokenType}\n";
+echo "过期时间: {$tokens->expiresIn} 秒\n\n";
 
-    // 2. 使用create方法创建包含加密字符串的Payload
-    echo "2. 使用create方法创建包含加密字符串的Payload...\n";
-    $encryptedData = base64_encode(json_encode(['sensitive_info' => 'secret_data', 'timestamp' => time()]));
-    $payload2 = Payload::create(
-        uid: 789,
-        username: 'bob_smith',
-        platform: 'mobile',
-        exp: time() + 7200,
-        iat: time(),
-        jti: uniqid('jwt_', true),
-        roles: ['user'],
-        perms: ['read'],
-        customData: $encryptedData  // 传入加密字符串
-    );
-    
-    echo "Payload 创建成功\n";
-    echo "是否有加密数据: " . ($payload2->hasEncryptedData() ? '是' : '否') . "\n";
-    echo "加密数据: " . $payload2->getEncryptedData() . "\n\n";
+// 4. Prometheus 监控指标
+echo "4. Prometheus 监控指标示例...\n";
+$metrics = new PrometheusMetrics('kode_jwt');
+$metrics->recordTokenIssued('api', 'web');
+$metrics->recordTokenAuthenticated('api');
+$metrics->setActiveTokens(150, 'api');
 
-    // 3. 生成Token并验证
-    echo "3. 生成Token并验证...\n";
-    $result1 = KodeJwt::issue($payload1);
-    $token1 = $result1['token'];
-    
-    echo "Token 生成成功:\n";
-    echo "Token: {$token1}\n\n";
+$result = $metrics->timeOperation('authenticate', function () {
+    usleep(1000);
+    return 'success';
+});
+echo "操作结果: {$result}\n";
+echo "指标已记录\n\n";
 
-    // 4. 验证Token并访问自定义数据
-    echo "4. 验证Token并访问自定义数据...\n";
-    $verifiedPayload = KodeJwt::authenticate($token1);
-    
-    echo "Token 验证成功:\n";
-    echo "User ID: {$verifiedPayload->uid}\n";
-    echo "Username: {$verifiedPayload->username}\n";
-    echo "Department: " . $verifiedPayload->getCustom('department') . "\n";
-    echo "Level: " . $verifiedPayload->getCustom('level') . "\n";
-    echo "Preferences: " . json_encode($verifiedPayload->getCustom('preferences')) . "\n";
-    echo "是否有加密数据: " . ($verifiedPayload->hasEncryptedData() ? '是' : '否') . "\n\n";
+// 5. 多签 JWT（需要配置）
+echo "5. 多签 JWT 示例...\n";
+echo "多签功能需要配置多个签名者密钥\n";
+echo "使用 Builder::buildMultiSignature() 方法\n\n";
 
-    // 5. 演示角色和权限检查
-    echo "5. 演示角色和权限检查...\n";
-    echo "是否有 'user' 角色: " . ($verifiedPayload->hasRole('user') ? '是' : '否') . "\n";
-    echo "是否有 'admin' 角色: " . ($verifiedPayload->hasRole('admin') ? '是' : '否') . "\n";
-    echo "是否有 'read' 权限: " . ($verifiedPayload->hasPermission('read') ? '是' : '否') . "\n";
-    echo "是否有 'delete' 权限: " . ($verifiedPayload->hasPermission('delete') ? '是' : '否') . "\n\n";
+// 6. 角色权限检查
+echo "6. 角色权限检查示例...\n";
+KodeJwt::init([
+    'guards' => ['api' => ['driver' => 'sso', 'storage' => 'memory', 'secret' => 'role-secret']],
+    'storage' => ['memory' => ['limit' => 1000]],
+]);
 
-    // 6. 演示健壮的fromArray方法
-    echo "6. 演示健壮的fromArray方法...\n";
-    $data = [
-        'uid' => 999,
-        'username' => 'test_user',
-        'platform' => 'api',
-        'exp' => time() + 1800,
-        'iat' => time(),
-        'jti' => uniqid('jwt_', true),
-        'roles' => ['user', 'tester'],
-        'perms' => ['read', 'test'],
-        'custom' => ['project' => 'jwt_package', 'version' => '1.0']
-    ];
-    
-    $payload3 = Payload::fromArray($data);
-    echo "从数组创建Payload成功:\n";
-    echo "User ID: {$payload3->uid}\n";
-    echo "Project: " . $payload3->getCustom('project') . "\n\n";
+$rbacPayload = Payload::create(
+    uid: 2001,
+    username: 'admin_user',
+    platform: 'admin',
+    exp: time() + 3600,
+    iat: time(),
+    jti: bin2hex(random_bytes(16)),
+    roles: ['admin', 'editor'],
+    perms: ['read', 'write', 'delete']
+);
 
-    // 7. 演示缺失必需字段的错误处理
-    echo "7. 演示缺失必需字段的错误处理...\n";
-    try {
-        $incompleteData = [
-            'username' => 'incomplete_user',
-            'platform' => 'api',
-            'exp' => time() + 1800,
-            'iat' => time(),
-            'jti' => uniqid('jwt_', true)
-        ];
-        
-        Payload::fromArray($incompleteData);
-    } catch (InvalidArgumentException $e) {
-        echo "捕获到预期的异常: " . $e->getMessage() . "\n\n";
-    }
+echo "用户角色: " . implode(', ', $rbacPayload->roles ?? []) . "\n";
+echo "是否有 admin 角色: " . ($rbacPayload->hasRole('admin') ? '是' : '否') . "\n";
+echo "是否有 delete 权限: " . ($rbacPayload->hasPermission('delete') ? '是' : '否') . "\n\n";
 
-    echo "=== 高级使用示例执行完成 ===\n";
+// 7. 自定义数据存储
+echo "7. 自定义数据存储示例...\n";
+$customPayload = Payload::create(
+    uid: 3001,
+    username: 'custom_user',
+    platform: 'mobile',
+    exp: time() + 3600,
+    iat: time(),
+    jti: bin2hex(random_bytes(16)),
+    customData: [
+        'department' => 'IT',
+        'level' => 5,
+        'preferences' => ['theme' => 'dark', 'lang' => 'zh-CN']
+    ]
+);
 
-} catch (Exception $e) {
-    echo "错误: " . $e->getMessage() . "\n";
-    echo "文件: " . $e->getFile() . "\n";
-    echo "行号: " . $e->getLine() . "\n";
-}
+echo "自定义数据: " . json_encode($customPayload->getCustomData(), JSON_UNESCAPED_UNICODE) . "\n";
+echo "部门: " . $customPayload->getCustom('department') . "\n";
+echo "等级: " . $customPayload->getCustom('level') . "\n\n";
+
+echo "=== 高级示例执行完成 ===\n";
