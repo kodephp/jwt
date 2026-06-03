@@ -12,6 +12,7 @@ use Kode\Jwt\Guard\SsoGuard;
 use Kode\Jwt\Guard\MloGuard;
 use Kode\Jwt\Log\LoggerFactory;
 use Kode\Jwt\Log\NullLogger;
+use Kode\Jwt\Security\AntiReplay;
 use Kode\Jwt\Storage\StorageFactory;
 use Kode\Jwt\Token\Builder;
 use Kode\Jwt\Token\Parser;
@@ -28,6 +29,7 @@ class KodeJwt
     private static ?Builder $builder = null;
     private static ?Parser $parser = null;
     private static ?LoggerInterface $logger = null;
+    private static ?AntiReplay $antiReplay = null;
     private static bool $configLoaded = false;
 
     /**
@@ -39,8 +41,50 @@ class KodeJwt
         static::$configLoader = new ConfigLoader($config);
         static::$eventDispatcher = new EventDispatcher();
         static::$logger = LoggerFactory::create(static::$configLoader->get('logging', []));
+        static::bootAntiReplay();
         static::$configLoaded = true;
         static::logger()->info('JWT 初始化完成', ['guard' => static::$configLoader->get('defaults.guard', 'api')]);
+    }
+
+    /**
+     * 引导防重放保护器
+     *
+     * 根据配置自动构建 AntiReplay 实例并尝试连接 Redis。
+     * 若依赖不可用，降级为关闭状态。
+     */
+    private static function bootAntiReplay(): void
+    {
+        if (static::$configLoader === null) {
+            static::$antiReplay = null;
+            return;
+        }
+
+        $replayConfig = static::$configLoader->get('replay', []);
+        if (empty($replayConfig) || !is_array($replayConfig)) {
+            static::$antiReplay = null;
+            return;
+        }
+
+        $antiReplay = new AntiReplay($replayConfig);
+        try {
+            $antiReplay->bootstrapFromConfig(static::$configLoader->all());
+        } catch (\Throwable $e) {
+            static::logger()->warning('防重放保护初始化失败，已降级为关闭', ['error' => $e->getMessage()]);
+            $antiReplay = new AntiReplay(['mode' => AntiReplay::MODE_OFF]);
+        }
+
+        static::$antiReplay = $antiReplay;
+    }
+
+    /**
+     * 获取防重放保护器
+     */
+    public static function antiReplay(): ?AntiReplay
+    {
+        if (static::$antiReplay === null && static::$configLoader !== null) {
+            static::bootAntiReplay();
+        }
+        return static::$antiReplay;
     }
 
     /**
@@ -202,6 +246,10 @@ class KodeJwt
                     'blacklist_ttl' => 604800,
                     'platform' => null,
                     'single_login' => false,
+                    // 时钟漂移容忍（秒），用于跨节点 NTP 偏差场景
+                    'clock_skew' => 30,
+                    // 期望的标准声明（iss/aud/sub），Parser 会强制匹配
+                    'expected_claims' => [],
                 ],
             ],
             'storage' => [
@@ -216,6 +264,8 @@ class KodeJwt
                     'database' => 0,
                     'prefix' => 'kode:jwt:',
                     'ttl' => 0,
+                    'persistent' => false,
+                    'persistent_id' => 'kode_jwt_redis',
                 ],
             ],
             'logging' => [
@@ -223,6 +273,16 @@ class KodeJwt
                 'driver' => 'file',
                 'path' => './logs/kode-jwt.log',
                 'level' => 'info',
+            ],
+            'replay' => [
+                'mode' => 'off',
+                'require_nonce' => false,
+                'window' => 60,
+                'max_requests' => 5,
+                'backend' => 'redis',
+                'redis_storage' => 'redis',
+                'prefix' => 'kode:jwt:',
+                'ttl' => 3600,
             ],
         ];
     }
@@ -329,7 +389,7 @@ class KodeJwt
             // 根据驱动类型创建守卫
             switch ($guardConfig['driver'] ?? 'sso') {
                 case 'mlo':
-                    static::$guards[$name] = new MloGuard(
+                    $guard = new MloGuard(
                         $storage,
                         $builder,
                         $parser,
@@ -340,7 +400,7 @@ class KodeJwt
                     break;
                 case 'sso':
                 default:
-                    static::$guards[$name] = new SsoGuard(
+                    $guard = new SsoGuard(
                         $storage,
                         $builder,
                         $parser,
@@ -350,6 +410,13 @@ class KodeJwt
                     );
                     break;
             }
+
+            // 注入防重放保护
+            if (static::$antiReplay !== null && method_exists($guard, 'withAntiReplay')) {
+                $guard->withAntiReplay(static::$antiReplay);
+            }
+
+            static::$guards[$name] = $guard;
             static::logger()->info('守卫实例创建完成', ['guard' => $name, 'driver' => $guardConfig['driver'] ?? 'sso']);
         }
 
@@ -470,5 +537,6 @@ class KodeJwt
         static::$builder = null;
         static::$parser = null;
         static::$logger = null;
+        static::$antiReplay = null;
     }
 }

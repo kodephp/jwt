@@ -104,6 +104,25 @@ class ConfigLoader
                 'path' => './logs/kode-jwt.log',
                 'level' => 'info',
             ],
+
+            /**
+             * 防重放保护配置
+             *
+             * 模式：
+             *   - strict  : 严格模式，Nonce 一经使用立即拒绝二次出现
+             *   - lenient : 宽松模式，结合滑动窗口限制异常高频
+             *   - off     : 关闭防重放
+             */
+            'replay' => [
+                'mode' => 'off',
+                'require_nonce' => false,
+                'window' => 60,
+                'max_requests' => 5,
+                'backend' => 'redis',
+                'redis_storage' => 'redis',
+                'prefix' => 'kode:jwt:',
+                'ttl' => 3600,
+            ],
         ];
     }
 

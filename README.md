@@ -1,7 +1,8 @@
 # Kode JWT：一个健壮、全面、现代化的 PHP 8.1+ JWT 包
 
 > **项目名称**：`kode/jwt`  
-> **目标**：为现代 PHP 应用提供安全、灵活、高性能的 JWT 身份验证解决方案，支持单点登录（SSO）、多点登录、黑名单管理、自动续期、多平台适配，兼容 FPM、Swoole、RoadRunner 等运行环境。
+> **当前版本**：`v1.8.0`  
+> **目标**：为现代 PHP 应用提供安全、灵活、高性能的 JWT 身份验证解决方案，支持单点登录（SSO）、多点登录、黑名单管理、自动续期、多平台适配、防重放攻击（Anti-Replay），兼容 FPM、Swoole、RoadRunner 等运行环境。
 
 ---
 
@@ -18,7 +19,7 @@
 |------|------|
 | ✅ **PHP 8.1+ 原生支持** | 使用 `readonly` 属性、`enum`、`never`、`true/false` 类型、`intersection types`（模拟）等新特性 |
 | ✅ **多平台支持** | H5、PC、App、小程序（微信/支付宝/抖音）等，通过 `platform` 声明区分，是否启用平台，平台配置一致或单独配置 |
-| ✅ **单点登录（SSO）** | 同一用户在同一平台仅允许一个有效 Token |
+| ✅ **单点登录（SSO）** | 同一用户在同一平台仅允许一个有效 Token，支持 Redis Lua 原子化踢出 |
 | ✅ **多点登录（MLO）** | 支持同一用户在多个设备同时登录 |
 | ✅ **Token 黑名单** | 支持主动注销、强制下线，基于 Redis 或内存存储（协程安全） |
 | ✅ **自动续期（Refresh）** | 支持滑动过期、固定刷新周期，防止频繁登录 |
@@ -30,6 +31,11 @@
 | ✅ **事件驱动** | 提供 `TokenIssued`、`TokenExpired`、`TokenRevoked` 等事件钩子 |
 | ✅ **审计日志** | 可选记录 Token 生成、使用、注销行为，使用通用日志包 |
 | ✅ **加密算法可插拔** | 默认 `HS256` / `RS256`，支持自定义签名器 |
+| 🆕 **防重放攻击（Anti-Replay）** | 基于 Redis Nonce + 滑动窗口，杜绝 Token 被截获后重复使用 |
+| 🆕 **高熵 JTI** | 32 字节（256 bit）密码学安全随机数，远高于 UUID v4 |
+| 🆕 **标准声明（iss/aud/sub）** | 业务级强制校验，防止跨服务/跨租户混用 |
+| 🆕 **时钟漂移容忍** | 跨节点 NTP 偏差场景下，配置 `clock_skew` 即可容错 |
+| 🆕 **Redis 原子化撤销** | Lua 脚本保证"黑名单 + SSO 映射 + 用户 Token 列表"三步原子性 |
 
 ---
 
@@ -759,8 +765,211 @@ $payload = Payload::create(
 - **敏感数据保护**：支持自定义加密数据字段，用户可自行实现加解密逻辑
 - **灵活字段设计**：`uid` 和 `username` 字段变为可选，支持雪花 ID 等字符串类型
 - **数据最小化**：仅包含必要字段，减少 Token 体积和传输成本
+- **持久化连接**：Redis 存储支持 `persistent` 长连接，跨请求复用连接
 
 ---
+
+## 🛡️ Redis 黑名单与防重放（v1.8.0+）
+
+> **核心目标**：在传统的 JTI 黑名单之上，引入 Nonce 一次性消费与滑动窗口机制，
+> 形成"两层防御"——既能在注销后立即拦截，又能在 Token 有效期内阻断重放。
+
+### 1. Redis 黑名单策略
+
+`kode/jwt` 默认将 `storage` 设为 `redis`，通过以下键完成 Token 生命周期管理：
+
+| 键名 | 用途 | 生命周期 |
+|------|------|----------|
+| `kode:jwt:blacklist:{jti}` | 注销/封禁的 JTI 集合 | `exp + refresh_ttl` |
+| `kode:jwt:token:{jti}` | Token 详细快照（uid、平台、过期时间等） | `exp - now` |
+| `kode:jwt:sso:{uid}:{platform}` | SSO 平台→JTI 映射 | `exp + refresh_ttl` |
+| `kode:jwt:user:{uid}:{platform}:tokens` | 用户活跃 Token 列表（最近 50 条） | `exp + refresh_ttl` |
+| `kode:jwt:replay:nonce:{jti}:{nonce}` | 防重放 Nonce 一次性消费标记 | `exp - now` |
+| `kode:jwt:replay:window:{jti}` | 滑动窗口访问轨迹（ZSet） | 窗口大小 |
+
+#### 1.1 启用 Redis 存储
+
+```php
+return [
+    'guards' => [
+        'api' => [
+            'driver'   => 'sso',
+            'storage'  => 'redis',           // 指定 Redis 存储
+            'algo'     => 'RS256',
+            'ttl'      => 3600,
+            'refresh_ttl' => 604800,
+            'blacklist_enabled' => true,      // 启用黑名单
+        ],
+    ],
+    'storage' => [
+        'redis' => [
+            'host' => '127.0.0.1',
+            'port' => 6379,
+            'password' => getenv('REDIS_PASSWORD'),
+            'database' => 0,
+            'prefix' => 'kode:jwt:',
+            'persistent' => true,             // 长连接（可选）
+            'persistent_id' => 'kode_jwt',
+        ],
+    ],
+];
+```
+
+#### 1.2 主动注销（踢下线）
+
+```php
+// 用户主动退出登录
+KodeJwt::guard('api')->invalidate($token);
+
+// 强制注销某用户某平台所有 Token
+$count = KodeJwt::revokeUserTokens('123', 'app');
+
+// 强制注销某用户所有平台 Token
+$count = KodeJwt::revokeUserTokens('123');
+```
+
+在 SSO 模式下，新用户登录会自动调用 `atomicRevoke` Lua 脚本，
+一次性清理旧 Token 的黑名单、SSO 映射、用户列表、Token 详情四个键，
+避免"半撤销"状态导致的并发漏洞。
+
+### 2. 防重放攻击（Anti-Replay）
+
+#### 2.1 攻击场景
+
+```
+[客户端] ——A: 请求 (Token: eyJ...)→  [服务器]
+                                          ↓ (Token 被截获)
+[攻击者] ——B: 重复使用 Token eyJ...→  [服务器]
+```
+
+仅依赖 JTI 黑名单无法应对以下两种情况：
+1. 注销前的"中间人重放"：Token 还在有效期内，被攻击者重发。
+2. 高频试探：攻击者在短时间内用同一 Token 暴力请求敏感接口。
+
+#### 2.2 Nonce 一次性消费
+
+```php
+return [
+    'replay' => [
+        'mode'         => 'strict',          // strict / lenient / off
+        'require_nonce' => true,             // 强制要求 Nonce 字段
+        'backend'      => 'redis',
+        'redis_storage'=> 'redis',
+        'prefix'       => 'kode:jwt:',
+        'ttl'          => 3600,              // Nonce 保留时间（秒）
+    ],
+];
+```
+
+启用后，签发 Token 时会自动注入 `nonce` 字段：
+
+```php
+$payload = Payload::create(
+    uid: 123,
+    platform: 'web',
+    exp: time() + 3600,
+    iat: time(),
+    jti: Payload::generateJti(),
+    nonce: AntiReplay::generateNonce(16),    // 32 字节随机值
+);
+$token = KodeJwt::guard('api')->issue($payload);
+```
+
+验证流程：
+
+```
+[1] 解析 Token → 取出 jti、nonce
+[2] Redis EVAL "SET NX" →  首次消费返回 1，重放返回 0
+[3] 命中重放 → 抛出 TokenReplayException
+```
+
+#### 2.3 滑动窗口频率限制
+
+当 `mode = lenient` 时启用，可识别异常短时间高频重放：
+
+```php
+return [
+    'replay' => [
+        'mode'         => 'lenient',
+        'window'       => 60,                // 窗口大小（秒）
+        'max_requests' => 5,                // 窗口内最大允许次数
+    ],
+];
+```
+
+底层使用 Redis ZSet 维护"最近 N 秒的 Nonce 时间序列"，
+过期窗口外的记录自动被裁剪。
+
+#### 2.4 异常处理
+
+```php
+use Kode\Jwt\Exception\TokenReplayException;
+use Kode\Jwt\Exception\TokenBlacklistedException;
+
+try {
+    $payload = KodeJwt::guard('api')->authenticate($token);
+} catch (TokenReplayException $e) {
+    // 重放攻击：记录安全日志、触发风控告警
+    security_log('replay_attack', [
+        'jti'    => $e->getJti(),
+        'nonce'  => $e->getNonce(),
+        'time'   => $e->getReplayDetectedAt(),
+    ]);
+    return response()->json(['error' => '请求被拒绝'], 401);
+} catch (TokenBlacklistedException $e) {
+    // 已注销：引导重新登录
+    return response()->json(['error' => '会话已过期'], 401);
+}
+```
+
+### 3. 标准声明（iss / aud / sub）强制校验
+
+```php
+return [
+    'guards' => [
+        'api' => [
+            'algo' => 'RS256',
+            'expected_claims' => [
+                'iss' => 'https://auth.example.com',     // 签发者必须匹配
+                'aud' => ['api.example.com', 'mobile'],  // 受众命中其一即可
+                'sub' => 'auth-service',                 // 主体标识
+                'tenant_id' => 'tenant_42',              // 自定义声明精确匹配
+            ],
+        ],
+    ],
+];
+```
+
+服务端验证流程会自动比对：
+- `iss` 精确匹配
+- `aud` 列表求交集
+- `sub` 精确匹配
+- 其他声明：精确匹配
+
+### 4. 时钟漂移容忍
+
+```php
+return [
+    'guards' => [
+        'api' => [
+            'clock_skew' => 30,    // 允许 30 秒的时钟漂移
+        ],
+    ],
+];
+```
+
+适用于多节点部署、NTP 同步存在偏差的场景，
+避免由于本地时间略快/略慢导致的 `nbf`、`exp` 误判。
+
+### 5. 密钥管理建议
+
+- **生产环境**：使用 RS256 非对称加密，私钥放在 `storage/keys/`，加入 `.gitignore`。
+- **多租户隔离**：使用 `expected_claims.tenant_id` 防止跨租户 Token 混用。
+- **密钥轮换**：使用内置的 `KeyRotationManager` 滚动更新密钥，详见"高级特性"章节。
+- **环境变量**：将密码、Redis 凭据存放于 `.env`，切勿硬编码进代码。
+
+---
+
 
 ## 🧩 扩展建议（IDE 友好）
 
@@ -2478,6 +2687,25 @@ $stats = KodeJwt::getStats(): array;
 // 返回: ['total' => int, 'expired' => int, 'active' => int]
 ```
 
+#### 防重放保护（v1.8.0+）
+
+```php
+// 获取防重放保护器
+$replay = KodeJwt::antiReplay(): ?AntiReplay;
+
+// 生成一次性 Nonce（32 字节随机值）
+$nonce = AntiReplay::generateNonce(16);
+
+// 手动消费 Nonce（高级用法，通常由 Guard 自动调用）
+$passed = $replay->check($jti, $nonce, $ttl);
+
+// 查询 Nonce 是否已被消费
+$seen = $replay->seen($jti, $nonce);
+
+// 检查是否启用
+$enabled = $replay->isEnabled();
+```
+
 #### 密钥生成
 
 ```php
@@ -2571,6 +2799,10 @@ $payload = Payload::fromArray([
 | `roles` | `array\|null` | 用户角色 |
 | `perms` | `array\|null` | 用户权限 |
 | `custom` | `array` | 自定义数据 |
+| `nonce` | `string\|null` | 🆕 一次性随机值（防重放） |
+| `audience` | `string\|array\|null` | 🆕 受众（aud） |
+| `issuer` | `string\|null` | 🆕 签发者（iss） |
+| `subject` | `string\|null` | 🆕 主体（sub） |
 
 #### Payload 方法
 
@@ -2604,6 +2836,21 @@ $ttl = $payload->getTtl(): int;
 
 // 获取用户标识
 $userId = $payload->getUserIdentifier(): mixed;
+
+// 🆕 获取一次性 Nonce
+$nonce = $payload->getNonce(): ?string;
+
+// 🆕 获取受众（aud）
+$aud = $payload->getAudience(): string|array|null;
+
+// 🆕 获取签发者（iss）
+$iss = $payload->getIssuer(): ?string;
+
+// 🆕 获取主体（sub）
+$sub = $payload->getSubject(): ?string;
+
+// 🆕 生成高熵 JTI（32 字节随机值）
+$jti = Payload::generateJti(): string;
 ```
 
 ---

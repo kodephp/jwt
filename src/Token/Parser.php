@@ -38,9 +38,10 @@ class Parser
      * @param string $token 原始 JWT 字符串
      * @param string|null $expectedPlatform 期望的平台标识，传入后会强制匹配
      * @param bool $ignoreExpiration 是否忽略过期校验，主要用于刷新流程
+     * @param array<string, mixed> $expectedClaims 期望的声明约束（如 iss / aud / sub）
      * @return Payload
      */
-    public function parse(string $token, ?string $expectedPlatform = null, bool $ignoreExpiration = false): Payload
+    public function parse(string $token, ?string $expectedPlatform = null, bool $ignoreExpiration = false, array $expectedClaims = []): Payload
     {
         $parts = explode('.', $token);
 
@@ -71,6 +72,8 @@ class Parser
             );
         }
 
+        $this->validateExpectedClaims($payloadArray, $expectedClaims, $token);
+
         try {
             return new Payload(
                 uid: $payloadArray['uid'] ?? null,
@@ -81,7 +84,11 @@ class Parser
                 jti: $payloadArray['jti'] ?? '',
                 roles: $payloadArray['roles'] ?? null,
                 perms: $payloadArray['perms'] ?? null,
-                custom: $payloadArray['custom'] ?? []
+                custom: $payloadArray['custom'] ?? [],
+                nonce: isset($payloadArray['nonce']) ? (string) $payloadArray['nonce'] : null,
+                audience: $payloadArray['aud'] ?? $payloadArray['audience'] ?? null,
+                issuer: $payloadArray['iss'] ?? $payloadArray['issuer'] ?? null,
+                subject: $payloadArray['sub'] ?? $payloadArray['subject'] ?? null
             );
         } catch (\InvalidArgumentException $e) {
             throw new TokenInvalidException(
@@ -258,6 +265,88 @@ class Parser
                 "Algorithm mismatch: expected {$expectedAlgorithm}, got {$actualAlgorithm}",
                 token: $token
             );
+        }
+    }
+
+    /**
+     * 校验业务期望的标准声明（iss/aud/sub/自定义）
+     *
+     * 用于加强 Token 的业务约束：
+     *  - iss：签发者必须与预期一致，防止跨服务/跨租户混用
+     *  - aud：受众必须命中预期列表
+     *  - sub：主体标识必须匹配
+     *  - 其他：键值精确匹配
+     *
+     * @param array<string, mixed> $payload 解码后的 Payload
+     * @param array<string, mixed> $expected 期望的声明约束
+     * @param string $token 原始 Token（用于异常信息）
+     * @return void
+     */
+    protected function validateExpectedClaims(array $payload, array $expected, string $token): void
+    {
+        if (empty($expected)) {
+            return;
+        }
+
+        $jti = isset($payload['jti']) ? (string) $payload['jti'] : null;
+
+        // 校验签发者（iss）
+        if (isset($expected['iss']) || isset($expected['issuer'])) {
+            $expectedIssuer = (string) ($expected['iss'] ?? $expected['issuer']);
+            $actualIssuer = (string) ($payload['iss'] ?? '');
+            if ($expectedIssuer !== '' && $actualIssuer !== $expectedIssuer) {
+                throw new TokenInvalidException(
+                    "Issuer mismatch: expected {$expectedIssuer}, got '{$actualIssuer}'",
+                    token: $token,
+                    jti: $jti
+                );
+            }
+        }
+
+        // 校验受众（aud）
+        if (isset($expected['aud']) || isset($expected['audience'])) {
+            $expectedAud = $expected['aud'] ?? $expected['audience'];
+            $actualAud = $payload['aud'] ?? $payload['audience'] ?? null;
+            $expectedList = is_array($expectedAud) ? $expectedAud : [$expectedAud];
+            $actualList = is_array($actualAud) ? $actualAud : [$actualAud];
+
+            $intersect = array_intersect((array) $expectedList, (array) $actualList);
+            if (empty($intersect)) {
+                throw new TokenInvalidException(
+                    'Audience mismatch: expected one of ' . implode(',', array_map('strval', $expectedList))
+                    . ', got ' . implode(',', array_map('strval', $actualList)),
+                    token: $token,
+                    jti: $jti
+                );
+            }
+        }
+
+        // 校验主体（sub）
+        if (isset($expected['sub']) || isset($expected['subject'])) {
+            $expectedSub = (string) ($expected['sub'] ?? $expected['subject']);
+            $actualSub = (string) ($payload['sub'] ?? '');
+            if ($expectedSub !== '' && $actualSub !== $expectedSub) {
+                throw new TokenInvalidException(
+                    "Subject mismatch: expected {$expectedSub}, got '{$actualSub}'",
+                    token: $token,
+                    jti: $jti
+                );
+            }
+        }
+
+        // 其他声明：精确匹配
+        foreach ($expected as $key => $value) {
+            if (in_array($key, ['iss', 'issuer', 'aud', 'audience', 'sub', 'subject'], true)) {
+                continue;
+            }
+            if (($payload[$key] ?? null) !== $value) {
+                throw new TokenInvalidException(
+                    "Claim mismatch: expected {$key}=" . json_encode($value)
+                    . ', got ' . json_encode($payload[$key] ?? null),
+                    token: $token,
+                    jti: $jti
+                );
+            }
         }
     }
 

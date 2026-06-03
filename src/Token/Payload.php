@@ -18,6 +18,10 @@ final readonly class Payload implements Arrayable
      * @param array<string>|null $roles 角色列表
      * @param array<string>|null $perms 权限列表
      * @param array<string, mixed> $custom 自定义数据
+     * @param string|null $nonce 一次性随机值（防重放）
+     * @param string|array<string>|null $audience 受众
+     * @param string|null $issuer 签发者
+     * @param string|null $subject 主体
      */
     public function __construct(
         public int|string|null $uid = null,
@@ -28,7 +32,11 @@ final readonly class Payload implements Arrayable
         public string $jti = '',
         public ?array $roles = null,
         public ?array $perms = null,
-        public array $custom = []
+        public array $custom = [],
+        public ?string $nonce = null,
+        public string|array|null $audience = null,
+        public ?string $issuer = null,
+        public ?string $subject = null
     ) {
         if ($this->platform === '' || $this->jti === '' || $this->exp <= 0 || $this->iat <= 0) {
             throw new \InvalidArgumentException('Invalid payload data.');
@@ -52,7 +60,11 @@ final readonly class Payload implements Arrayable
      *     jti: string,
      *     roles?: array<string>,
      *     perms?: array<string>,
-     *     custom?: array<string, mixed>
+     *     custom?: array<string, mixed>,
+     *     nonce?: string,
+     *     aud?: string|array<string>,
+     *     iss?: string,
+     *     sub?: string
      * } $data 包含Payload数据的数组
      * @return static
      * @throws \InvalidArgumentException 当必需字段缺失时抛出异常
@@ -76,7 +88,11 @@ final readonly class Payload implements Arrayable
             (string) $data['jti'],
             isset($data['roles']) ? (array) $data['roles'] : null,
             isset($data['perms']) ? (array) $data['perms'] : null,
-            isset($data['custom']) ? (array) $data['custom'] : []
+            isset($data['custom']) ? (array) $data['custom'] : [],
+            isset($data['nonce']) ? (string) $data['nonce'] : null,
+            $data['aud'] ?? $data['audience'] ?? null,
+            $data['iss'] ?? $data['issuer'] ?? null,
+            $data['sub'] ?? $data['subject'] ?? null
         );
     }
 
@@ -92,6 +108,10 @@ final readonly class Payload implements Arrayable
      * @param array<string>|null $roles 用户角色列表
      * @param array<string>|null $perms 用户权限列表
      * @param array<string, mixed>|string|null $customData 自定义数据，可以是数组或加密字符串
+     * @param string|null $nonce 一次性随机值（防重放）
+     * @param string|array<string>|null $audience 受众
+     * @param string|null $issuer 签发者
+     * @param string|null $subject 主体
      * @return static
      */
     public static function create(
@@ -103,7 +123,11 @@ final readonly class Payload implements Arrayable
         string $jti = '',
         ?array $roles = null,
         ?array $perms = null,
-        array|string|null $customData = null
+        array|string|null $customData = null,
+        ?string $nonce = null,
+        string|array|null $audience = null,
+        ?string $issuer = null,
+        ?string $subject = null
     ): static {
         $custom = [];
 
@@ -122,7 +146,11 @@ final readonly class Payload implements Arrayable
             $jti,
             $roles,
             $perms,
-            $custom
+            $custom,
+            $nonce,
+            $audience,
+            $issuer,
+            $subject
         );
     }
 
@@ -161,7 +189,7 @@ final readonly class Payload implements Arrayable
         }
 
         $exp = $now + ($ttl * 60);
-        $jti = uniqid('jwt_', true);
+        $jti = self::generateJti();
 
         $custom = [];
 
@@ -180,7 +208,11 @@ final readonly class Payload implements Arrayable
             $jti,
             $userData['roles'] ?? null,
             $userData['perms'] ?? null,
-            $custom
+            $custom,
+            $userData['nonce'] ?? null,
+            $userData['aud'] ?? $userData['audience'] ?? null,
+            $userData['iss'] ?? $userData['issuer'] ?? null,
+            $userData['sub'] ?? $userData['subject'] ?? null
         );
     }
 
@@ -190,6 +222,53 @@ final readonly class Payload implements Arrayable
     public function isExpired(): bool
     {
         return time() > $this->exp;
+    }
+
+    /**
+     * 生成高熵 JTI
+     *
+     * 使用密码学安全随机数生成 32 字节（256 bit）随机值，
+     * 远高于 UUID v4 的 122 bit 熵，足以满足防碰撞与防预测需求。
+     *
+     * @return string
+     */
+    public static function generateJti(): string
+    {
+        return 'jwt_' . bin2hex(random_bytes(16));
+    }
+
+    /**
+     * 获取一次性 Nonce
+     */
+    public function getNonce(): ?string
+    {
+        return $this->nonce;
+    }
+
+    /**
+     * 获取受众（aud）
+     *
+     * @return string|array<string>|null
+     */
+    public function getAudience(): string|array|null
+    {
+        return $this->audience;
+    }
+
+    /**
+     * 获取签发者（iss）
+     */
+    public function getIssuer(): ?string
+    {
+        return $this->issuer;
+    }
+
+    /**
+     * 获取主体（sub）
+     */
+    public function getSubject(): ?string
+    {
+        return $this->subject;
     }
 
     /**

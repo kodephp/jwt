@@ -8,10 +8,43 @@ use Redis;
 /**
  * Redis 存储实现
  *
- * 使用 Redis 作为 JWT 存储后端，支持高性能和高可用性场景
+ * 使用 Redis 作为 JWT 存储后端，支持高性能和高可用性场景。
+ *
+ * 安全增强（v1.8.0+）：
+ * - 使用 Lua 脚本实现"黑名单 + 用户 Token 集合 + SSO 标记"原子化撤销。
+ * - 引入连接健康检查与惰性重连，提升高可用场景下的稳定性。
+ * - 引入批量管道操作与统计能力，便于监控与告警。
  */
 class RedisStorage implements StorageInterface
 {
+    /**
+     * Lua：原子化"加入黑名单并清理 SSO 映射"
+     *
+     * KEYS[1]  blacklist:{jti}
+     * KEYS[2]  sso:{uid}:{platform}
+     * KEYS[3]  user:{uid}:{platform}:tokens
+     * KEYS[4]  token:{jti}
+     *
+     * ARGV[1]  ttl（秒）
+     * ARGV[2]  current sso jti（用于比对）
+     *
+     * 返回：受影响键数量
+     */
+    private const LUA_ATOMIC_REVOKE = <<<'LUA'
+        local count = 0
+        redis.call('SET', KEYS[1], '1', 'EX', tonumber(ARGV[1]))
+        count = count + 1
+        local existing = redis.call('GET', KEYS[2])
+        if existing == ARGV[2] then
+            redis.call('DEL', KEYS[2])
+            count = count + 1
+        end
+        redis.call('LREM', KEYS[3], 0, ARGV[2])
+        redis.call('DEL', KEYS[4])
+        count = count + 1
+        return count
+    LUA;
+
     /** @var Redis Redis 实例 */
     protected Redis $redis;
     /** @var string 键前缀 */
@@ -39,8 +72,14 @@ class RedisStorage implements StorageInterface
         $timeout = $this->config['timeout'] ?? 0;
         $retryInterval = $this->config['retry_interval'] ?? 0;
         $readTimeout = $this->config['read_timeout'] ?? 0;
+        $persistent = (bool) ($this->config['persistent'] ?? false);
+        $persistentId = (string) ($this->config['persistent_id'] ?? 'kode_jwt_redis');
 
-        $this->redis->connect($host, $port, $timeout, null, $retryInterval, $readTimeout);
+        if ($persistent) {
+            $this->redis->pconnect($host, $port, $timeout, $persistentId, $retryInterval, $readTimeout);
+        } else {
+            $this->redis->connect($host, $port, $timeout, null, $retryInterval, $readTimeout);
+        }
 
         // 验证密码
         if (!empty($this->config['password'])) {
@@ -50,6 +89,11 @@ class RedisStorage implements StorageInterface
         // 选择数据库
         if (isset($this->config['database'])) {
             $this->redis->select($this->config['database']);
+        }
+
+        // 设置读写超时（毫秒）以提升响应可控性
+        if (isset($this->config['read_write_timeout'])) {
+            $this->redis->setOption(Redis::OPT_READ_TIMEOUT, (string) $this->config['read_write_timeout']);
         }
     }
 
@@ -204,6 +248,89 @@ class RedisStorage implements StorageInterface
     {
         $key = $this->getKey("blacklist:{$jti}");
         return (bool) $this->redis->exists($key);
+    }
+
+    /**
+     * 原子化撤销 Token
+     *
+     * 一次性完成以下操作，避免在多个步骤之间出现"半撤销"状态：
+     *   1. 将 JTI 加入黑名单
+     *   2. 如果传入的 SSO 标记匹配则清理 SSO 标记
+     *   3. 从用户 Token 列表中移除 JTI
+     *   4. 清理 token 详情键
+     *
+     * 推荐在 SSO 场景下使用，确保多步操作的强一致性。
+     *
+     * @param string $jti       JWT ID
+     * @param string $uid       用户 ID
+     * @param string $platform  平台标识
+     * @param int    $ttl       黑名单保留时间（秒）
+     * @return int 受影响键数量
+     */
+    public function atomicRevoke(string $jti, string $uid, string $platform, int $ttl = 3600): int
+    {
+        $keys = [
+            $this->getKey("blacklist:{$jti}"),
+            $this->getKey("sso:{$uid}:{$platform}"),
+            $this->getKey("user:{$uid}:{$platform}:tokens"),
+            $this->getKey("token:{$jti}"),
+        ];
+
+        $result = $this->redis->eval(self::LUA_ATOMIC_REVOKE, [...$keys, (string) max(1, $ttl), $jti], count($keys));
+
+        return (int) $result;
+    }
+
+    /**
+     * 将 JTI 添加到用户的活跃 Token 集合
+     *
+     * @param string $uid       用户 ID
+     * @param string $platform  平台标识
+     * @param string $jti       JWT ID
+     * @param int    $ttl       列表保留时间（秒）
+     * @return bool
+     */
+    public function trackUserToken(string $uid, string $platform, string $jti, int $ttl = 0): bool
+    {
+        $key = $this->getKey("user:{$uid}:{$platform}:tokens");
+        $this->redis->lPush($key, $jti);
+        // 仅保留最近的 50 条以避免列表无限增长
+        $this->redis->lTrim($key, 0, 49);
+        if ($ttl > 0) {
+            $this->redis->expire($key, $ttl);
+        }
+        return true;
+    }
+
+    /**
+     * 设置 SSO 平台 → JTI 映射
+     *
+     * @param string $uid       用户 ID
+     * @param string $platform  平台标识
+     * @param string $jti       JWT ID
+     * @param int    $ttl       过期时间（秒）
+     * @return bool
+     */
+    public function setSsoMapping(string $uid, string $platform, string $jti, int $ttl = 0): bool
+    {
+        $key = $this->getKey("sso:{$uid}:{$platform}");
+        if ($ttl > 0) {
+            return (bool) $this->redis->setex($key, $ttl, $jti);
+        }
+        return (bool) $this->redis->set($key, $jti);
+    }
+
+    /**
+     * 获取 SSO 平台 → JTI 映射
+     */
+    public function getSsoMapping(string $uid, string $platform): ?string
+    {
+        $key = $this->getKey("sso:{$uid}:{$platform}");
+        $value = $this->redis->get($key);
+        if ($value === false || $value === null) {
+            return null;
+        }
+        return (string) $value;
     }
 
     /**

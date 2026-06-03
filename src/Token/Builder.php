@@ -209,6 +209,20 @@ class Builder
     }
 
     /**
+     * 设置一次性 Nonce（防重放）
+     *
+     * 业务场景：客户端在调用敏感接口时生成一个随机 Nonce 放入请求头，
+     * 服务端验证 Nonce 唯一性后放行，避免攻击者重放截获的请求。
+     *
+     * @param string $nonce 一次性随机值
+     * @return $this
+     */
+    public function setNonce(string $nonce): self
+    {
+        return $this->setClaim('nonce', $nonce);
+    }
+
+    /**
      * 从Jsonable对象设置声明
      */
     public function fromJsonable(Jsonable $jsonable): self
@@ -235,6 +249,11 @@ class Builder
 
         if (!isset($this->claims['jti'])) {
             $this->setId(self::generateJti());
+        }
+
+        // 自动注入 typ 头部（若未设置）
+        if (!isset($this->headers['typ'])) {
+            $this->headers['typ'] = 'JWT';
         }
 
         $header = $this->encodePart($this->headers);
@@ -287,7 +306,8 @@ class Builder
     /**
      * 生成高熵 JTI
      *
-     * 使用随机字节构建唯一标识，降低可预测性与冲突风险。
+     * 使用密码学安全随机数（random_bytes）生成 32 字节（256 bit）随机值，
+     * 远高于 UUID v4 的 122 bit 熵，足以满足防碰撞与防预测需求。
      *
      * @return string
      */

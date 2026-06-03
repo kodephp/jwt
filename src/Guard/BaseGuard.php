@@ -17,7 +17,9 @@ use Kode\Jwt\Event\TokenRevoked;
 use Kode\Jwt\Exception\JwtException;
 use Kode\Jwt\Exception\TokenBlacklistedException;
 use Kode\Jwt\Exception\TokenInvalidException;
+use Kode\Jwt\Exception\TokenReplayException;
 use Kode\Jwt\Log\NullLogger;
+use Kode\Jwt\Security\AntiReplay;
 
 abstract class BaseGuard implements GuardInterface
 {
@@ -27,6 +29,7 @@ abstract class BaseGuard implements GuardInterface
     protected EventDispatcher $eventDispatcher;
     protected LoggerInterface $logger;
     protected array $config;
+    protected ?AntiReplay $antiReplay = null;
 
     public function __construct(
         StorageInterface $storage,
@@ -45,17 +48,34 @@ abstract class BaseGuard implements GuardInterface
     }
 
     /**
+     * 注入防重放保护器
+     */
+    public function withAntiReplay(AntiReplay $antiReplay): self
+    {
+        $this->antiReplay = $antiReplay;
+        return $this;
+    }
+
+    /**
      * 验证Token
      */
     public function authenticate(string $token): Payload
     {
         try {
-            $payload = $this->parser->parse($token, $this->getExpectedPlatform());
+            $payload = $this->parser->parse(
+                $token,
+                $this->getExpectedPlatform(),
+                false,
+                (array) ($this->config['expected_claims'] ?? [])
+            );
 
             if ($this->storage->isBlacklisted($payload->jti)) {
                 $this->logger->warning('Token 在黑名单中，认证失败', ['jti' => $payload->jti]);
                 throw new TokenBlacklistedException(jti: $payload->jti, token: $token);
             }
+
+            // 防重放校验
+            $this->checkAntiReplay($payload, $token);
 
             $this->logger->debug('Token 认证成功', ['jti' => $payload->jti, 'platform' => $payload->platform]);
             return $payload;
@@ -115,7 +135,12 @@ abstract class BaseGuard implements GuardInterface
      */
     public function refresh(string $token): array
     {
-        $oldPayload = $this->parser->parse($token, $this->getExpectedPlatform(), true);
+        $oldPayload = $this->parser->parse(
+            $token,
+            $this->getExpectedPlatform(),
+            true,
+            (array) ($this->config['expected_claims'] ?? [])
+        );
 
         // 检查是否可以刷新
         if (!$this->canRefresh($token)) {
@@ -176,7 +201,12 @@ abstract class BaseGuard implements GuardInterface
     public function invalidate(string $token): bool
     {
         try {
-            $payload = $this->parser->parse($token, $this->getExpectedPlatform(), true);
+            $payload = $this->parser->parse(
+                $token,
+                $this->getExpectedPlatform(),
+                true,
+                (array) ($this->config['expected_claims'] ?? [])
+            );
             $blacklistTtl = $this->getBlacklistTtlSeconds($payload);
             $result = $this->storage->blacklist($payload->jti, $blacklistTtl);
 
@@ -210,7 +240,12 @@ abstract class BaseGuard implements GuardInterface
         }
 
         try {
-            $payload = $this->parser->parse($token, $this->getExpectedPlatform(), true);
+            $payload = $this->parser->parse(
+                $token,
+                $this->getExpectedPlatform(),
+                true,
+                (array) ($this->config['expected_claims'] ?? [])
+            );
 
             // 检查是否在黑名单中
             if ($this->storage->isBlacklisted($payload->jti)) {
@@ -344,6 +379,14 @@ abstract class BaseGuard implements GuardInterface
                 ], $ttl);
             }
         }
+
+        // 记录到用户活跃 Token 集合（Redis 优化路径）
+        if (method_exists($this->storage, 'trackUserToken')) {
+            $uid = $this->normalizeUid($payload->uid);
+            $platform = $this->normalizePlatform($payload->platform);
+            $ttl = max(0, $payload->exp - time()) + $this->getRefreshTtlSeconds();
+            $this->storage->trackUserToken($uid, $platform, $payload->jti, max(1, $ttl));
+        }
     }
 
     /**
@@ -374,4 +417,34 @@ abstract class BaseGuard implements GuardInterface
      * 注册Token（由子类实现）
      */
     abstract public function register(string $uid, string $platform, string $jti): void;
+
+    /**
+     * 防重放校验
+     *
+     * 当 Guard 注入了 AntiReplay 实例且处于启用模式时，
+     * 在认证流程中根据 JTI + Nonce 组合进行一次性消费校验。
+     * 命中重放时抛出 TokenReplayException。
+     */
+    protected function checkAntiReplay(Payload $payload, string $token): void
+    {
+        if ($this->antiReplay === null || !$this->antiReplay->isEnabled()) {
+            return;
+        }
+
+        $ttl = max(1, $payload->exp - time());
+        $passed = $this->antiReplay->check($payload->jti, $payload->getNonce(), $ttl);
+        if (!$passed) {
+            $this->logger->warning('检测到 Token 重放，已拒绝', [
+                'jti' => $payload->jti,
+                'platform' => $payload->platform,
+                'uid' => $payload->uid,
+            ]);
+            throw new TokenReplayException(
+                'Token replay detected',
+                jti: $payload->jti,
+                token: $token,
+                nonce: $payload->getNonce()
+            );
+        }
+    }
 }
