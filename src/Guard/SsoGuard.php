@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace Kode\Jwt\Guard;
 
 use Kode\Jwt\Contract\LoggerInterface;
+use Kode\Jwt\Contract\SsoStorageInterface;
 use Kode\Jwt\Contract\StorageInterface;
 use Kode\Jwt\Event\EventDispatcher;
 use Kode\Jwt\Token\Builder;
 use Kode\Jwt\Token\Parser;
-use Kode\Jwt\Token\Payload;
 
 class SsoGuard extends BaseGuard
 {
@@ -40,54 +40,51 @@ class SsoGuard extends BaseGuard
     /**
      * 检查是否唯一登录
      *
-     * 优先使用 Redis 存储的 getSsoMapping 接口；降级到通用 storage->get。
+     * 优先使用 SsoStorageInterface 的 getSsoMapping / atomicRevoke；
+     * 降级到通用 storage->get + blacklist。
      */
     public function isUnique(string $uid, string $platform): bool
     {
-        $existing = null;
+        $ssoKey = "sso:{$uid}:{$platform}";
+        $existing = $this->storage instanceof SsoStorageInterface
+            ? $this->storage->getSsoMapping($uid, $platform)
+            : $this->storage->get($ssoKey);
 
-        if (method_exists($this->storage, 'getSsoMapping')) {
-            $existing = $this->storage->getSsoMapping($uid, $platform);
+        if (empty($existing)) {
+            return true;
+        }
+
+        $jti = (string) $existing;
+        if ($this->storage instanceof SsoStorageInterface) {
+            $ttl = $this->getTtlSeconds() + $this->getRefreshTtlSeconds();
+            $this->storage->atomicRevoke($jti, $uid, $platform, max(1, $ttl));
         } else {
-            $key = "sso:{$uid}:{$platform}";
-            $existing = $this->storage->get($key);
+            $this->storage->blacklist($jti);
+            $this->storage->delete($ssoKey);
         }
 
-        if (!empty($existing)) {
-            // 如果存储支持原子化撤销，则一次性清理
-            if (method_exists($this->storage, 'atomicRevoke')) {
-                $ttl = $this->getTtlSeconds() + $this->getRefreshTtlSeconds();
-                $this->storage->atomicRevoke((string) $existing, $uid, $platform, max(1, $ttl));
-            } else {
-                $this->storage->blacklist((string) $existing);
-                $this->storage->delete("sso:{$uid}:{$platform}");
-            }
-            $this->logger->info('SSO 检测到历史会话，已自动踢出旧 Token', [
-                'uid' => $uid,
-                'platform' => $platform,
-                'old_jti' => $existing,
-            ]);
-        }
-
+        $this->logger->info('SSO 检测到历史会话，已自动踢出旧 Token', [
+            'uid' => $uid,
+            'platform' => $platform,
+            'old_jti' => $jti,
+        ]);
         return true;
     }
 
     /**
-     * 注册Token
+     * 注册 Token
+     *
+     * 优先使用 SsoStorageInterface 便捷方法；降级到通用 set。
      */
     public function register(string $uid, string $platform, string $jti): void
     {
-        $ttl = $this->getTtlSeconds() + $this->getRefreshTtlSeconds();
+        $ttl = max(1, $this->getTtlSeconds() + $this->getRefreshTtlSeconds());
 
-        if (method_exists($this->storage, 'setSsoMapping')) {
-            $this->storage->setSsoMapping($uid, $platform, $jti, max(1, $ttl));
+        if ($this->storage instanceof SsoStorageInterface) {
+            $this->storage->setSsoMapping($uid, $platform, $jti, $ttl);
+            $this->storage->trackUserToken($uid, $platform, $jti, $ttl);
         } else {
-            $key = "sso:{$uid}:{$platform}";
-            $this->storage->set($key, $jti, max(1, $ttl));
-        }
-
-        if (method_exists($this->storage, 'trackUserToken')) {
-            $this->storage->trackUserToken($uid, $platform, $jti, max(1, $ttl));
+            $this->storage->set("sso:{$uid}:{$platform}", $jti, $ttl);
         }
 
         $this->logger->debug('SSO 会话注册完成', ['uid' => $uid, 'platform' => $platform, 'jti' => $jti]);
@@ -98,7 +95,7 @@ class SsoGuard extends BaseGuard
      */
     public function currentJti(string $uid, string $platform): ?string
     {
-        if (method_exists($this->storage, 'getSsoMapping')) {
+        if ($this->storage instanceof SsoStorageInterface) {
             return $this->storage->getSsoMapping($uid, $platform);
         }
         $value = $this->storage->get("sso:{$uid}:{$platform}");

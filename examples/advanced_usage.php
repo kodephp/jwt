@@ -119,4 +119,32 @@ echo "自定义数据: " . json_encode($customPayload->getCustomData(), JSON_UNE
 echo "部门: " . $customPayload->getCustom('department') . "\n";
 echo "等级: " . $customPayload->getCustom('level') . "\n\n";
 
+// 8. 防重放（Anti-Replay）演示
+echo "8. 防重放（Anti-Replay）演示...\n";
+echo "   - Nonce 一次性消费原理 + AntiReplay::generateNonce()\n\n";
+
+// 直接使用 AntiReplay 工具（不依赖 Redis，仅演示 Nonce 生成）
+$replayNonce = \Kode\Jwt\Security\AntiReplay::generateNonce(16);
+echo "   - 生成一次性 Nonce: {$replayNonce} (长度=" . strlen($replayNonce) . ")\n";
+echo "   - Nonce 由密码学安全随机数生成，适用于 strict/lenient 模式\n\n";
+
+// 标准声明（iss / aud / sub）演示
+echo "9. 标准声明（iss / aud / sub）演示...\n";
+$standardPayload = Payload::create(
+    uid: 4001,
+    username: 'standard_user',
+    platform: 'web',
+    exp: time() + 3600,
+    iat: time(),
+    jti: Payload::generateJti(),
+    audience: ['api.example.com', 'mobile'],
+    issuer: 'https://auth.example.com',
+    subject: 'auth-service',
+    nonce: \Kode\Jwt\Security\AntiReplay::generateNonce(8),
+);
+echo "   - iss: {$standardPayload->getIssuer()}\n";
+echo "   - aud: " . json_encode($standardPayload->getAudience()) . "\n";
+echo "   - sub: {$standardPayload->getSubject()}\n";
+echo "   - nonce: {$standardPayload->getNonce()}\n\n";
+
 echo "=== 高级示例执行完成 ===\n";

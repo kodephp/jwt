@@ -2,6 +2,7 @@
 
 namespace Kode\Jwt\Storage;
 
+use Kode\Jwt\Contract\SsoStorageInterface;
 use Kode\Jwt\Contract\StorageInterface;
 use Redis;
 
@@ -15,7 +16,7 @@ use Redis;
  * - 引入连接健康检查与惰性重连，提升高可用场景下的稳定性。
  * - 引入批量管道操作与统计能力，便于监控与告警。
  */
-class RedisStorage implements StorageInterface
+class RedisStorage implements SsoStorageInterface
 {
     /**
      * Lua：原子化"加入黑名单并清理 SSO 映射"
@@ -52,6 +53,11 @@ class RedisStorage implements StorageInterface
     /** @var array<string, mixed> 配置数组 */
     protected array $config;
 
+    /**
+     * 构造函数
+     *
+     * @param array<string, mixed> $config Redis 连接与行为配置
+     */
     public function __construct(array $config = [])
     {
         $this->config = $config;
@@ -78,7 +84,7 @@ class RedisStorage implements StorageInterface
         if ($persistent) {
             $this->redis->pconnect($host, $port, $timeout, $persistentId, $retryInterval, $readTimeout);
         } else {
-            $this->redis->connect($host, $port, $timeout, null, $retryInterval, $readTimeout);
+            $this->redis->connect($host, $port, $timeout, '', $retryInterval, $readTimeout);
         }
 
         // 验证密码
@@ -172,6 +178,9 @@ class RedisStorage implements StorageInterface
     public function setMultiple(array $values, int $ttl = 0): bool
     {
         $pipe = $this->redis->multi();
+        if (!is_object($pipe)) {
+            return false;
+        }
 
         foreach ($values as $key => $value) {
             $redisKey = $this->getKey($key);
@@ -225,6 +234,8 @@ class RedisStorage implements StorageInterface
 
     /**
      * 批量删除键
+     *
+     * @param array<int, string> $keys 键列表
      */
     public function deleteMultiple(array $keys): bool
     {

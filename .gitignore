@@ -39,3 +39,8 @@ Thumbs.db
 
 # PHPStan
 /phpstan.neon.tmp
+
+# Runtime data (file storage demo)
+/storage/
+/runtime/
+/examples/runtime/

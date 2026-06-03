@@ -153,4 +153,36 @@ class NullStorage implements StorageInterface
     {
         return true;
     }
+
+    /**
+     * 空存储不实现原子化撤销
+     */
+    public function atomicRevoke(string $jti, string $uid, string $platform, int $ttl = 3600): int
+    {
+        return 0;
+    }
+
+    /**
+     * 空存储不记录用户 Token 列表
+     */
+    public function trackUserToken(string $uid, string $platform, string $jti, int $ttl = 0): bool
+    {
+        return false;
+    }
+
+    /**
+     * 空存储不保存 SSO 映射
+     */
+    public function setSsoMapping(string $uid, string $platform, string $jti, int $ttl = 0): bool
+    {
+        return false;
+    }
+
+    /**
+     * 空存储不返回 SSO 映射
+     */
+    public function getSsoMapping(string $uid, string $platform): ?string
+    {
+        return null;
+    }
 }

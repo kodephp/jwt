@@ -74,6 +74,12 @@ class RedisReplayProtection implements ReplayProtectionInterface
     private int $slidingWindow;
     private int $slidingMaxRequests;
 
+    /**
+     * 构造函数
+     *
+     * @param StorageInterface|Redis|array<string, mixed> $connection Redis 实例、存储实例或配置
+     * @param array<string, mixed> $config 防重放保护器配置
+     */
     public function __construct(StorageInterface|Redis|array $connection, array $config = [])
     {
         if ($connection instanceof StorageInterface) {
@@ -153,7 +159,7 @@ class RedisReplayProtection implements ReplayProtectionInterface
      */
     public function purge(): int
     {
-        $pattern = $this->prefix . 'replay:*';
+        $pattern = "{$this->prefix}replay:*";
         $keys = $this->redis->keys($pattern);
         if (empty($keys)) {
             return 0;

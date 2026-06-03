@@ -6,6 +6,7 @@ namespace Kode\Jwt\Guard;
 
 use Kode\Jwt\Contract\GuardInterface;
 use Kode\Jwt\Contract\LoggerInterface;
+use Kode\Jwt\Contract\SsoStorageInterface;
 use Kode\Jwt\Contract\StorageInterface;
 use Kode\Jwt\Token\Builder;
 use Kode\Jwt\Token\Parser;
@@ -28,9 +29,17 @@ abstract class BaseGuard implements GuardInterface
     protected Parser $parser;
     protected EventDispatcher $eventDispatcher;
     protected LoggerInterface $logger;
+
+    /** @var array<string, mixed> 守卫配置 */
     protected array $config;
+
     protected ?AntiReplay $antiReplay = null;
 
+    /**
+     * 构造函数
+     *
+     * @param array<string, mixed> $config 守卫配置
+     */
     public function __construct(
         StorageInterface $storage,
         Builder $builder,
@@ -257,7 +266,7 @@ abstract class BaseGuard implements GuardInterface
 
             // 检查是否在刷新窗口期内
             return time() <= $refreshWindow;
-        } catch (TokenInvalidException $e) {
+        } catch (TokenInvalidException) {
             return false;
         }
     }
@@ -380,17 +389,27 @@ abstract class BaseGuard implements GuardInterface
             }
         }
 
-        // 记录到用户活跃 Token 集合（Redis 优化路径）
-        if (method_exists($this->storage, 'trackUserToken')) {
-            $uid = $this->normalizeUid($payload->uid);
-            $platform = $this->normalizePlatform($payload->platform);
-            $ttl = max(0, $payload->exp - time()) + $this->getRefreshTtlSeconds();
-            $this->storage->trackUserToken($uid, $platform, $payload->jti, max(1, $ttl));
+        // 记录到用户活跃 Token 集合（SsoStorageInterface 优化路径）
+        if ($this->storage instanceof SsoStorageInterface) {
+            try {
+                $uid = $this->normalizeUid($payload->uid);
+                $platform = $this->normalizePlatform($payload->platform);
+                $ttl = max(0, $payload->exp - time()) + $this->getRefreshTtlSeconds();
+                $this->storage->trackUserToken($uid, $platform, $payload->jti, max(1, $ttl));
+            } catch (JwtException $exception) {
+                // uid / platform 缺失时不阻塞主流程，仅记录日志
+                $this->logger->debug('跳过用户 Token 列表记录', [
+                    'jti' => $payload->jti,
+                    'reason' => $exception->getMessage(),
+                ]);
+            }
         }
     }
 
     /**
      * 获取Token信息
+     *
+     * @return array<string, mixed>|null
      */
     public function getTokenInfo(string $jti): ?array
     {
@@ -400,12 +419,27 @@ abstract class BaseGuard implements GuardInterface
 
     /**
      * 获取用户的所有活跃Token
+     *
+     * 支持可选的平台过滤；不传时返回该用户所有平台。
+     * 仅 SsoStorageInterface 实现了该能力，其他存储返回空数组。
+     *
+     * @param int|string $uid      用户 ID
+     * @param string|null $platform 平台标识（可选）
+     * @return array<string> JTI 列表
      */
-    public function getUserActiveTokens(int $uid, ?string $platform = null): array
+    public function getUserActiveTokens(int|string $uid, ?string $platform = null): array
     {
-        // 这个方法需要在具体的存储实现中处理
-        // 这里提供一个通用的实现
-        return [];
+        if (!$this->storage instanceof SsoStorageInterface) {
+            return [];
+        }
+
+        $uid = (string) $uid;
+        $key = $platform === null
+            ? "user:{$uid}::tokens"
+            : "user:{$uid}:{$platform}:tokens";
+
+        $list = (array) $this->storage->get($key, []);
+        return array_values(array_map('strval', $list));
     }
 
     /**

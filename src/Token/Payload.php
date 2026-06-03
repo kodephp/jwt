@@ -45,7 +45,21 @@ final readonly class Payload implements Arrayable
 
     public function toArray(): array
     {
-        return get_object_vars($this);
+        $data = get_object_vars($this);
+
+        // 映射为 RFC 7519 标准声明键名，便于直接签发到 JWT
+        if ($this->issuer !== null && !isset($data['iss'])) {
+            $data['iss'] = $this->issuer;
+        }
+        if ($this->audience !== null && !isset($data['aud'])) {
+            $data['aud'] = $this->audience;
+        }
+        if ($this->subject !== null && !isset($data['sub'])) {
+            $data['sub'] = $this->subject;
+        }
+        unset($data['audience'], $data['issuer'], $data['subject']);
+
+        return $data;
     }
 
     /**
@@ -64,7 +78,10 @@ final readonly class Payload implements Arrayable
      *     nonce?: string,
      *     aud?: string|array<string>,
      *     iss?: string,
-     *     sub?: string
+     *     sub?: string,
+     *     audience?: string|array<string>,
+     *     issuer?: string,
+     *     subject?: string
      * } $data 包含Payload数据的数组
      * @return static
      * @throws \InvalidArgumentException 当必需字段缺失时抛出异常
@@ -74,7 +91,7 @@ final readonly class Payload implements Arrayable
         // 验证必需字段
         $requiredFields = ['platform', 'exp', 'iat', 'jti'];
         foreach ($requiredFields as $field) {
-            if (!isset($data[$field])) {
+            if (!array_key_exists($field, $data)) {
                 throw new \InvalidArgumentException("Missing required field: {$field}");
             }
         }
@@ -90,9 +107,9 @@ final readonly class Payload implements Arrayable
             isset($data['perms']) ? (array) $data['perms'] : null,
             isset($data['custom']) ? (array) $data['custom'] : [],
             isset($data['nonce']) ? (string) $data['nonce'] : null,
-            $data['aud'] ?? $data['audience'] ?? null,
-            $data['iss'] ?? $data['issuer'] ?? null,
-            $data['sub'] ?? $data['subject'] ?? null
+            $data['aud'] ?? ($data['audience'] ?? null),
+            $data['iss'] ?? ($data['issuer'] ?? null),
+            $data['sub'] ?? ($data['subject'] ?? null)
         );
     }
 
@@ -188,7 +205,7 @@ final readonly class Payload implements Arrayable
             $ttl = $config['refresh_ttl'];
         }
 
-        $exp = $now + ($ttl * 60);
+        $exp = $now + $ttl * 60;
         $jti = self::generateJti();
 
         $custom = [];
@@ -338,12 +355,32 @@ final readonly class Payload implements Arrayable
     /**
      * 设置加密数据
      *
+     * 注意：因 Payload 为 readonly 类，本方法返回包含新加密数据的新实例；
+     * 原实例不会被修改，确保 JWT Payload 的不可变语义。
+     *
      * @param string $encryptedData 加密后的数据
-     * @return void
+     * @return static 新的 Payload 实例
      */
-    public function setEncryptedData(string $encryptedData): void
+    public function setEncryptedData(string $encryptedData): static
     {
-        $this->custom['encrypted_data'] = $encryptedData;
+        $newCustom = $this->custom;
+        $newCustom['encrypted_data'] = $encryptedData;
+
+        return new static(
+            $this->uid,
+            $this->username,
+            $this->platform,
+            $this->exp,
+            $this->iat,
+            $this->jti,
+            $this->roles,
+            $this->perms,
+            $newCustom,
+            $this->nonce,
+            $this->audience,
+            $this->issuer,
+            $this->subject,
+        );
     }
 
     /**
@@ -362,7 +399,7 @@ final readonly class Payload implements Arrayable
      */
     public function hasRole(string $role): bool
     {
-        return $this->roles && is_array($this->roles) && in_array($role, $this->roles, true);
+        return $this->roles !== null && in_array($role, $this->roles, true);
     }
 
     /**
@@ -373,7 +410,7 @@ final readonly class Payload implements Arrayable
      */
     public function hasPermission(string $permission): bool
     {
-        return $this->perms && is_array($this->perms) && in_array($permission, $this->perms, true);
+        return $this->perms !== null && in_array($permission, $this->perms, true);
     }
 
     /**

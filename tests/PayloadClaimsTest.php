@@ -117,4 +117,59 @@ final class PayloadClaimsTest extends TestCase
         self::assertSame('auth', $payload->getIssuer());
         self::assertNotEmpty($payload->jti);
     }
+
+    /**
+     * 验证 setEncryptedData 在 readonly 模式下返回新实例
+     */
+    public function testSetEncryptedDataReturnsNewInstance(): void
+    {
+        $now = time();
+        $original = new Payload(
+            uid: 1,
+            platform: 'web',
+            exp: $now + 3600,
+            iat: $now,
+            jti: 'jti_setenc'
+        );
+
+        $updated = $original->setEncryptedData('enc_blob');
+
+        // 原实例不被修改（immutable）
+        self::assertFalse($original->hasEncryptedData());
+        // 新实例携带加密数据
+        self::assertTrue($updated->hasEncryptedData());
+        self::assertSame('enc_blob', $updated->getEncryptedData());
+        // 其他字段保持一致
+        self::assertSame($original->jti, $updated->jti);
+        self::assertSame($original->uid, $updated->uid);
+    }
+
+    /**
+     * 验证 toArray 将 issuer/audience/subject 映射为标准声明键
+     */
+    public function testToArrayMapsStandardClaims(): void
+    {
+        $now = time();
+        $payload = new Payload(
+            uid: 1,
+            platform: 'web',
+            exp: $now + 3600,
+            iat: $now,
+            jti: 'jti_std',
+            audience: ['api.example.com'],
+            issuer: 'https://auth.example.com',
+            subject: 'auth-service',
+        );
+
+        $array = $payload->toArray();
+        self::assertArrayHasKey('iss', $array);
+        self::assertArrayHasKey('aud', $array);
+        self::assertArrayHasKey('sub', $array);
+        self::assertArrayNotHasKey('issuer', $array);
+        self::assertArrayNotHasKey('audience', $array);
+        self::assertArrayNotHasKey('subject', $array);
+        self::assertSame('https://auth.example.com', $array['iss']);
+        self::assertSame(['api.example.com'], $array['aud']);
+        self::assertSame('auth-service', $array['sub']);
+    }
 }

@@ -1,7 +1,7 @@
-# Kode JWT：一个健壮、全面、现代化的 PHP 8.1+ JWT 包
+# Kode JWT：一个健壮、全面、现代化的 PHP 8.2+ JWT 包
 
 > **项目名称**：`kode/jwt`  
-> **当前版本**：`v1.8.0`  
+> **当前版本**：`v1.8.1`  
 > **目标**：为现代 PHP 应用提供安全、灵活、高性能的 JWT 身份验证解决方案，支持单点登录（SSO）、多点登录、黑名单管理、自动续期、多平台适配、防重放攻击（Anti-Replay），兼容 FPM、Swoole、RoadRunner 等运行环境。
 
 ---
@@ -17,7 +17,7 @@
 
 | 特性 | 说明 |
 |------|------|
-| ✅ **PHP 8.1+ 原生支持** | 使用 `readonly` 属性、`enum`、`never`、`true/false` 类型、`intersection types`（模拟）等新特性 |
+| ✅ **PHP 8.2+ 原生支持** | 使用 `readonly` 类、`readonly` 属性、`enum`、`never`、`true/false` 类型、`intersection types`（模拟）等新特性 |
 | ✅ **多平台支持** | H5、PC、App、小程序（微信/支付宝/抖音）等，通过 `platform` 声明区分，是否启用平台，平台配置一致或单独配置 |
 | ✅ **单点登录（SSO）** | 同一用户在同一平台仅允许一个有效 Token，支持 Redis Lua 原子化踢出 |
 | ✅ **多点登录（MLO）** | 支持同一用户在多个设备同时登录 |
@@ -742,6 +742,212 @@ $payload = Payload::create(
     customData: $encryptedData
 );
 ```
+
+---
+
+## 🚀 快速开始（v1.8.x）
+
+### 1. 最小化示例
+
+```php
+<?php
+require 'vendor/autoload.php';
+
+use Kode\Jwt\KodeJwt;
+use Kode\Jwt\Token\Payload;
+
+// 1. 初始化（使用内存存储，演示用）
+KodeJwt::init([
+    'guards' => [
+        'api' => [
+            'driver' => 'sso',
+            'storage' => 'memory',
+            'secret' => 'your-256-bit-secret-key',
+        ],
+    ],
+]);
+
+// 2. 签发 Token
+$now = time();
+$payload = Payload::create(
+    uid: 1001,
+    username: 'alice',
+    platform: 'web',
+    exp: $now + 3600,
+    iat: $now,
+    jti: Payload::generateJti(),    // 高熵 JTI
+);
+$token = KodeJwt::issue($payload)['token'];
+
+// 3. 验证 Token
+$verified = KodeJwt::authenticate($token);
+echo $verified->username;  // alice
+```
+
+### 2. 启用 Redis 存储 + 防重放
+
+```php
+KodeJwt::init([
+    'guards' => [
+        'api' => [
+            'driver'   => 'sso',
+            'storage'  => 'redis',
+            'algo'     => 'RS256',
+            'secret'   => 'your-rs256-secret',
+            'expected_claims' => [
+                'iss' => 'https://auth.example.com',
+                'aud' => ['api.example.com', 'mobile'],
+            ],
+            'clock_skew' => 30,
+        ],
+    ],
+    'storage' => [
+        'redis' => [
+            'host' => '127.0.0.1',
+            'port' => 6379,
+            'password' => getenv('REDIS_PASSWORD'),
+            'prefix' => 'kode:jwt:',
+        ],
+    ],
+    'replay' => [
+        'mode'          => 'strict',     // strict / lenient / off
+        'require_nonce' => true,
+        'window'        => 60,
+        'max_requests'  => 5,
+    ],
+]);
+```
+
+### 3. 自定义 Payload 并签发
+
+```php
+use Kode\Jwt\Security\AntiReplay;
+
+$payload = Payload::create(
+    uid: 1001,
+    username: 'alice',
+    platform: 'web',
+    exp: time() + 3600,
+    iat: time(),
+    jti: Payload::generateJti(),
+    audience: ['api.example.com'],
+    issuer:   'https://auth.example.com',
+    subject:  'auth-service',
+    nonce:    AntiReplay::generateNonce(16),  // 32 字节一次性 Nonce
+    roles:    ['user', 'admin'],
+    perms:    ['read', 'write'],
+    customData: [
+        'tenant_id'  => 't_42',
+        'department' => 'IT',
+    ],
+);
+
+$result = KodeJwt::issue($payload);
+// ['token' => 'eyJ...', 'expires_in' => 3600, 'refresh_ttl' => 604800]
+```
+
+### 4. 异常处理模板
+
+```php
+use Kode\Jwt\Exception\TokenInvalidException;
+use Kode\Jwt\Exception\TokenBlacklistedException;
+use Kode\Jwt\Exception\TokenReplayException;
+use Kode\Jwt\Exception\TokenExpiredException;
+
+try {
+    $payload = KodeJwt::authenticate($token);
+} catch (TokenReplayException $e) {
+    // 重放攻击：记录安全日志、触发风控告警
+    return response()->json(['error' => '请求被拒绝'], 401);
+} catch (TokenBlacklistedException $e) {
+    // 已注销：引导重新登录
+    return response()->json(['error' => '会话已过期'], 401);
+} catch (TokenExpiredException $e) {
+    // 已过期：尝试 refresh
+    return response()->json(['error' => '需要刷新'], 401);
+} catch (TokenInvalidException $e) {
+    // 签名错误 / 算法不匹配 / 业务声明不匹配
+    return response()->json(['error' => '无效 Token'], 401);
+}
+```
+
+> 完整示例请参考 `examples/` 目录：
+> - `examples/basic_usage.php` — 基础 + expected_claims 校验
+> - `examples/storage_usage.php` — 多存储 + SsoStorageInterface 增强
+> - `examples/advanced_usage.php` — 标准声明 + Nonce + 多签
+
+---
+
+## 🆕 v1.8.1 新特性：SsoStorageInterface 能力探测
+
+v1.8.1 引入了 `Kode\Jwt\Contract\SsoStorageInterface`，用于描述存储后端的"高级 SSO 能力"。
+
+- 所有存储实现（Redis、Memory、File 等）仍只需实现基础 `StorageInterface`；
+- 支持 SSO / 原子化撤销 / 用户活跃 Token 列表 的存储后端，可选实现 `SsoStorageInterface`；
+- 业务代码通过 `instanceof` 进行能力探测，自动使用高级 API，缺失时降级为通用实现。
+
+### 接口契约
+
+```php
+namespace Kode\Jwt\Contract;
+
+interface SsoStorageInterface extends StorageInterface
+{
+    /** 原子化撤销（黑名单 + SSO 清理 + 用户列表清理 + 详情清理） */
+    public function atomicRevoke(string $jti, string $uid, string $platform, int $ttl = 3600): int;
+
+    /** 记录到用户活跃 Token 列表（最多保留 50 条） */
+    public function trackUserToken(string $uid, string $platform, string $jti, int $ttl = 0): bool;
+
+    /** 设置 SSO 平台 → JTI 映射 */
+    public function setSsoMapping(string $uid, string $platform, string $jti, int $ttl = 0): bool;
+
+    /** 获取 SSO 平台 → JTI 映射 */
+    public function getSsoMapping(string $uid, string $platform): ?string;
+}
+```
+
+### 业务代码推荐写法
+
+```php
+use Kode\Jwt\Contract\SsoStorageInterface;
+
+/** @var \Kode\Jwt\Contract\StorageInterface $storage */
+
+// 通用调用：所有存储后端都支持
+$storage->blacklist($jti, 3600);
+
+// 高级能力：仅在支持时使用，否则降级
+if ($storage instanceof SsoStorageInterface) {
+    // 推荐：原子化撤销（生产环境使用 Redis 时为 Lua 脚本原子操作）
+    $affected = $storage->atomicRevoke($jti, $uid, $platform, 3600);
+
+    // 维护用户活跃 Token 列表
+    $storage->trackUserToken($uid, $platform, $jti, 3600);
+
+    // SSO 平台 → JTI 映射
+    $storage->setSsoMapping($uid, $platform, $jti, 3600);
+    $bound = $storage->getSsoMapping($uid, $platform);
+} else {
+    // 降级实现（顺序执行，非原子）
+    $storage->blacklist($jti, 3600);
+    $storage->delete("sso:{$uid}:{$platform}");
+    $storage->delete("token:{$jti}");
+}
+```
+
+### 已实现 SsoStorageInterface 的存储
+
+| 存储 | 实现方式 | 适用场景 |
+|------|----------|----------|
+| `RedisStorage` | Lua 脚本（`LUA_ATOMIC_REVOKE`） | 生产环境首选，原子性最强 |
+| `CoroutineRedisStorage` | 协程 Redis + Lua | Swoole 等协程环境 |
+| `MemoryStorage` | 顺序执行（PHP-FPM 单进程语义） | 单机测试、本地开发 |
+| `FileStorage` | 顺序执行（文件锁语义） | 单机持久化场景 |
+
+> **关于不可变 Payload 的说明**：v1.8.1 起，`Payload` 为 `readonly` 类，
+> `setEncryptedData()` 改为返回**新实例**而非修改原实例，
+> 调用方式：`$newPayload = $payload->setEncryptedData('...')`。
 
 ---
 

@@ -9,6 +9,7 @@ use Kode\Jwt\Contract\TokenManagerInterface;
 use Kode\Jwt\Event\EventDispatcher;
 use Kode\Jwt\Exception\TokenBlacklistedException;
 use Kode\Jwt\Guard\MloGuard;
+use Kode\Jwt\Guard\SsoGuard;
 use Kode\Jwt\Storage\MemoryStorage;
 use Kode\Jwt\Token\Builder;
 use Kode\Jwt\Token\Parser;
@@ -147,5 +148,103 @@ final class GuardTest extends TestCase
         self::assertArrayHasKey('token', $refreshed);
 
         self::assertTrue($manager->invalidate($refreshed['token']));
+    }
+
+    /**
+     * 验证 SsoGuard 单一登录策略：再次签发会自动踢出旧 Token
+     */
+    public function testSsoGuardKicksOutPreviousToken(): void
+    {
+        $config = [
+            'algo' => 'HS256',
+            'secret' => 'sso_unit_test_secret',
+            'ttl' => 1440,
+            'refresh_enabled' => true,
+            'refresh_ttl' => 20160,
+            'blacklist_enabled' => true,
+            'platform' => 'app',
+        ];
+
+        $storage = new MemoryStorage(['limit' => 1000]);
+        $builder = new Builder($config);
+        $parser = new Parser($config);
+        $dispatcher = new EventDispatcher();
+
+        $guard = new SsoGuard($storage, $builder, $parser, $dispatcher, null, $config);
+
+        $now = time();
+        $firstPayload = new Payload(
+            uid: 1001,
+            username: 'alice',
+            platform: 'app',
+            exp: $now + 3600,
+            iat: $now,
+            jti: 'jti_sso_first'
+        );
+
+        $firstToken = $guard->issue($firstPayload)['token'];
+        $firstJti = $guard->authenticate($firstToken)->jti;
+        self::assertSame('jti_sso_first', $firstJti);
+
+        // 第二次签发：SSO 应当把第一次的 Token 加入黑名单
+        $secondPayload = new Payload(
+            uid: 1001,
+            username: 'alice',
+            platform: 'app',
+            exp: $now + 3600,
+            iat: $now,
+            jti: 'jti_sso_second'
+        );
+
+        $secondToken = $guard->issue($secondPayload)['token'];
+
+        // 第一次的 Token 应当因 SSO 撤销而无法通过认证
+        try {
+            $guard->authenticate($firstToken);
+            self::fail('首次 Token 应当被 SSO 撤销');
+        } catch (TokenBlacklistedException) {
+            // 预期行为
+        }
+
+        // 第二次的 Token 仍能正常通过
+        $verified = $guard->authenticate($secondToken);
+        self::assertSame('jti_sso_second', $verified->jti);
+    }
+
+    /**
+     * 验证 SsoGuard::currentJti 能读取当前 SSO 绑定
+     */
+    public function testSsoGuardCurrentJti(): void
+    {
+        $config = [
+            'algo' => 'HS256',
+            'secret' => 'sso_curr_jti_secret',
+            'ttl' => 1440,
+            'refresh_enabled' => true,
+            'refresh_ttl' => 20160,
+            'blacklist_enabled' => true,
+            'platform' => 'app',
+        ];
+
+        $storage = new MemoryStorage(['limit' => 1000]);
+        $builder = new Builder($config);
+        $parser = new Parser($config);
+        $dispatcher = new EventDispatcher();
+        $guard = new SsoGuard($storage, $builder, $parser, $dispatcher, null, $config);
+
+        $now = time();
+        $payload = new Payload(
+            uid: 1001,
+            platform: 'app',
+            exp: $now + 3600,
+            iat: $now,
+            jti: 'jti_currentjti'
+        );
+
+        $token = $guard->issue($payload)['token'];
+        self::assertSame('jti_currentjti', $guard->currentJti('1001', 'app'));
+
+        // 验证获取不存在的绑定返回 null
+        self::assertNull($guard->currentJti('1001', 'unknown'));
     }
 }

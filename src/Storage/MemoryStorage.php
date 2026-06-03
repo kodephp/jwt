@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace Kode\Jwt\Storage;
 
+use Kode\Jwt\Contract\SsoStorageInterface;
 use Kode\Jwt\Contract\StorageInterface;
 
-class MemoryStorage implements StorageInterface
+class MemoryStorage implements SsoStorageInterface
 {
     /**
      * @var array<string, array{value: mixed, expires_at: int}>
@@ -198,5 +199,67 @@ class MemoryStorage implements StorageInterface
         $this->storage = [];
         $this->blacklist = [];
         return true;
+    }
+
+    /**
+     * 内存存储原子化撤销（兼容接口）
+     *
+     * 内存环境下没有并发问题，可顺序执行：黑名单 → SSO 清理 → 用户列表清理。
+     */
+    public function atomicRevoke(string $jti, string $uid, string $platform, int $ttl = 3600): int
+    {
+        $count = 0;
+        if ($this->blacklist($jti, $ttl)) {
+            $count++;
+        }
+        $ssoKey = "sso:{$uid}:{$platform}";
+        if ($this->get($ssoKey) === $jti) {
+            if ($this->delete($ssoKey)) {
+                $count++;
+            }
+        }
+        $listKey = "user:{$uid}:{$platform}:tokens";
+        $list = (array) $this->get($listKey, []);
+        if (in_array($jti, $list, true)) {
+            $list = array_values(array_filter($list, static fn(string $x): bool => $x !== $jti));
+            $this->set($listKey, $list, $ttl);
+            $count++;
+        }
+        if ($this->delete("token:{$jti}")) {
+            $count++;
+        }
+        return $count;
+    }
+
+    /**
+     * 记录到用户活跃 Token 列表
+     */
+    public function trackUserToken(string $uid, string $platform, string $jti, int $ttl = 0): bool
+    {
+        $key = "user:{$uid}:{$platform}:tokens";
+        $list = (array) $this->get($key, []);
+        array_unshift($list, $jti);
+        $list = array_slice(array_unique($list), 0, 50);
+        return $this->set($key, $list, $ttl);
+    }
+
+    /**
+     * 设置 SSO 平台 → JTI 映射
+     */
+    public function setSsoMapping(string $uid, string $platform, string $jti, int $ttl = 0): bool
+    {
+        return $this->set("sso:{$uid}:{$platform}", $jti, $ttl);
+    }
+
+    /**
+     * 获取 SSO 平台 → JTI 映射
+     */
+    public function getSsoMapping(string $uid, string $platform): ?string
+    {
+        $value = $this->get("sso:{$uid}:{$platform}");
+        if ($value === null) {
+            return null;
+        }
+        return (string) $value;
     }
 }
