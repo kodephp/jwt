@@ -239,7 +239,8 @@ class KodeJwt
                     'driver' => 'sso',
                     'storage' => 'memory',
                     'algo' => 'HS256',
-                    'secret' => 'your-256-bit-secret-key-here',
+                    // 使用 HMAC 算法时必须配置非空密钥
+                    'secret' => '',
                     'ttl' => 3600,
                     'refresh_ttl' => 604800,
                     'blacklist_enabled' => true,

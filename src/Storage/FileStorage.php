@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Kode\Jwt\Storage;
 
 use Kode\Jwt\Contract\SsoStorageInterface;
@@ -19,6 +21,11 @@ class FileStorage implements SsoStorageInterface
     /** @var array<string, mixed> 配置数组 */
     protected array $config;
 
+    /**
+     * 构造函数
+     *
+     * @param array<string, mixed> $config 配置数组
+     */
     public function __construct(array $config = [])
     {
         $this->config = $config;
@@ -27,7 +34,9 @@ class FileStorage implements SsoStorageInterface
 
         // 确保目录存在
         if (!is_dir($this->path)) {
-            mkdir($this->path, 0755, true);
+            if (!@mkdir($this->path, 0755, true) && !is_dir($this->path)) {
+                throw new \RuntimeException(sprintf('无法创建存储目录: %s', $this->path));
+            }
         }
     }
 
@@ -39,6 +48,39 @@ class FileStorage implements SsoStorageInterface
         // 清理键名，防止路径遍历
         $cleanKey = preg_replace('/[^a-zA-Z0-9._-]/', '_', $key);
         return $this->path . $cleanKey . $this->extension;
+    }
+
+    /**
+     * 使用共享锁读取文件内容
+     *
+     * 与 set() 的 LOCK_EX 对称，确保读取期间不会被写入打断。
+     * 读取失败或文件无法锁定时返回 null。
+     */
+    protected function readFileWithSharedLock(string $filePath): ?string
+    {
+        $handle = @fopen($filePath, 'rb');
+        if ($handle === false) {
+            return null;
+        }
+
+        try {
+            if (!flock($handle, LOCK_SH)) {
+                return null;
+            }
+
+            // 锁定后再次检查文件是否存在（防止竞态：被其他进程删除）
+            clearstatcache(true, $filePath);
+            if (!is_file($filePath)) {
+                return null;
+            }
+
+            $contents = stream_get_contents($handle);
+            flock($handle, LOCK_UN);
+
+            return $contents === false ? null : $contents;
+        } finally {
+            fclose($handle);
+        }
     }
 
     /**
@@ -55,8 +97,8 @@ class FileStorage implements SsoStorageInterface
             'created_at' => time()
         ];
 
-        // 序列化数据
-        $serializedData = json_encode($data, JSON_PRETTY_PRINT);
+        // 序列化数据（紧凑格式，减少 IO 开销）
+        $serializedData = json_encode($data);
 
         // 写入文件
         $result = file_put_contents($filePath, $serializedData, LOCK_EX);
@@ -76,10 +118,10 @@ class FileStorage implements SsoStorageInterface
             return $default;
         }
 
-        // 读取文件内容
-        $serializedData = file_get_contents($filePath);
+        // 读取文件内容（使用共享锁，与 set() 的 LOCK_EX 对称）
+        $serializedData = $this->readFileWithSharedLock($filePath);
 
-        if ($serializedData === false) {
+        if ($serializedData === null) {
             return $default;
         }
 
@@ -128,10 +170,10 @@ class FileStorage implements SsoStorageInterface
             return false;
         }
 
-        // 读取文件内容
-        $serializedData = file_get_contents($filePath);
+        // 读取文件内容（使用共享锁，与 set() 的 LOCK_EX 对称）
+        $serializedData = $this->readFileWithSharedLock($filePath);
 
-        if ($serializedData === false) {
+        if ($serializedData === null) {
             return false;
         }
 
@@ -189,6 +231,10 @@ class FileStorage implements SsoStorageInterface
         // 获取目录中的所有文件
         $files = glob($this->path . '*' . $this->extension);
 
+        if ($files === false) {
+            return 0;
+        }
+
         foreach ($files as $file) {
             // 读取文件内容
             $serializedData = file_get_contents($file);
@@ -205,7 +251,7 @@ class FileStorage implements SsoStorageInterface
             }
 
             // 检查是否过期
-            if ($data['expires_at'] > 0 && $data['expires_at'] < time()) {
+            if (is_array($data) && isset($data['expires_at']) && $data['expires_at'] > 0 && $data['expires_at'] < time()) {
                 // 删除过期文件
                 if (unlink($file)) {
                     $count++;
@@ -277,7 +323,7 @@ class FileStorage implements SsoStorageInterface
             'type' => 'file',
             'path' => $this->path,
             'extension' => $this->extension,
-            'file_count' => count($files),
+            'file_count' => $files === false ? 0 : count($files),
         ];
     }
 
@@ -307,7 +353,7 @@ class FileStorage implements SsoStorageInterface
         }
 
         $data['expires_at'] = time() + $ttl;
-        $result = file_put_contents($filePath, json_encode($data, JSON_PRETTY_PRINT), LOCK_EX);
+        $result = file_put_contents($filePath, json_encode($data), LOCK_EX);
 
         return $result !== false;
     }
@@ -328,21 +374,26 @@ class FileStorage implements SsoStorageInterface
 
         $data = json_decode($serializedData, true);
 
-        if ($data === null) {
+        if (!is_array($data) || !isset($data['expires_at'])) {
             return -2;
         }
 
-        if ($data['expires_at'] <= 0) {
+        $expiresAt = (int) $data['expires_at'];
+
+        if ($expiresAt <= 0) {
             return -1;
         }
 
-        $remaining = $data['expires_at'] - time();
+        $remaining = $expiresAt - time();
         return $remaining > 0 ? $remaining : -2;
     }
 
     public function clear(): bool
     {
         $files = glob($this->path . '*' . $this->extension);
+        if ($files === false) {
+            return true;
+        }
         $success = true;
 
         foreach ($files as $file) {

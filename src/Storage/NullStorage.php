@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Kode\Jwt\Storage;
 
 use Kode\Jwt\Contract\StorageInterface;
@@ -8,6 +10,8 @@ use Kode\Jwt\Contract\StorageInterface;
  * 空存储实现
  *
  * 用于测试或禁用存储功能的场景，所有操作均为空操作
+ *
+ * @warning 仅用于测试/禁用存储，不适用于生产环境，黑名单功能完全失效
  */
 class NullStorage implements StorageInterface
 {
@@ -146,7 +150,7 @@ class NullStorage implements StorageInterface
 
     public function getRemainingTtl(string $key): int
     {
-        return -1;
+        return -2;
     }
 
     public function clear(): bool

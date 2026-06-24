@@ -112,13 +112,20 @@ class AntiReplay
 
     /**
      * 生成一次性 Nonce
+     *
+     * @param int $length Nonce 字节长度
+     * @throws \RuntimeException 当 CSPRNG 不可用时抛出
      */
     public static function generateNonce(int $length = 16): string
     {
+        if ($length < 1) {
+            $length = 16;
+        }
+
         try {
             return bin2hex(random_bytes($length));
         } catch (\Throwable $e) {
-            return hash('sha256', uniqid('nonce_', true) . mt_rand());
+            throw new \RuntimeException('CSPRNG is not available: ' . $e->getMessage(), 0, $e);
         }
     }
 

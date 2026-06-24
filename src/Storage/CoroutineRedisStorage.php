@@ -1,26 +1,71 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Kode\Jwt\Storage;
 
+use Kode\Jwt\Contract\SsoStorageInterface;
 use Kode\Jwt\Contract\StorageInterface;
-use Swoole\Coroutine\Redis as CoRedis;
 
 /**
  * 协程 Redis 存储实现
  *
  * 使用 Swoole 协程 Redis 作为 JWT 存储后端，适用于高性能异步场景
+ *
+ * 安全增强（v1.8.0+）：
+ * - 使用 Lua 脚本实现"黑名单 + 用户 Token 集合 + SSO 标记"原子化撤销。
+ * - 通过字符串类名惰性加载 Swoole 协程 Redis，避免在非 Swoole 环境下产生硬依赖。
+ * - 引入连接健康检查与惰性重连，提升高可用场景下的稳定性。
  */
-class CoroutineRedisStorage implements StorageInterface
+class CoroutineRedisStorage implements SsoStorageInterface
 {
-    /** @var CoRedis 协程 Redis 实例 */
-    protected CoRedis $redis;
+    /**
+     * Lua：原子化"加入黑名单并清理 SSO 映射"
+     *
+     * KEYS[1]  blacklist:{jti}
+     * KEYS[2]  sso:{uid}:{platform}
+     * KEYS[3]  user:{uid}:{platform}:tokens
+     * KEYS[4]  token:{jti}
+     *
+     * ARGV[1]  ttl（秒）
+     * ARGV[2]  current sso jti（用于比对）
+     *
+     * 返回：受影响键数量
+     */
+    private const LUA_ATOMIC_REVOKE = <<<'LUA'
+        local count = 0
+        redis.call('SET', KEYS[1], '1', 'EX', tonumber(ARGV[1]))
+        count = count + 1
+        local existing = redis.call('GET', KEYS[2])
+        if existing == ARGV[2] then
+            redis.call('DEL', KEYS[2])
+            count = count + 1
+        end
+        redis.call('LREM', KEYS[3], 0, ARGV[2])
+        redis.call('DEL', KEYS[4])
+        count = count + 1
+        return count
+    LUA;
+
+    /** @var \Swoole\Coroutine\Redis 协程 Redis 实例 */
+    protected object $redis;
     /** @var string 键前缀 */
     protected string $prefix;
     /** @var array<string, mixed> 配置数组 */
     protected array $config;
 
+    /**
+     * 构造函数
+     *
+     * @param array<string, mixed> $config Redis 连接与行为配置
+     * @throws \RuntimeException 当未加载 swoole 扩展时抛出
+     */
     public function __construct(array $config = [])
     {
+        if (!extension_loaded('swoole')) {
+            throw new \RuntimeException('需要加载 swoole 扩展才能使用 CoroutineRedisStorage');
+        }
+
         $this->config = $config;
         $this->prefix = $config['prefix'] ?? 'kode:jwt:';
 
@@ -29,10 +74,14 @@ class CoroutineRedisStorage implements StorageInterface
 
     /**
      * 连接Redis
+     *
+     * @throws \RuntimeException 当认证或选择数据库失败时抛出
      */
     protected function connect(): void
     {
-        $this->redis = new CoRedis();
+        // 使用字符串类名惰性加载，避免顶部硬依赖
+        $class = 'Swoole\Coroutine\Redis';
+        $this->redis = new $class();
 
         $host = $this->config['host'] ?? '127.0.0.1';
         $port = $this->config['port'] ?? 6379;
@@ -42,12 +91,18 @@ class CoroutineRedisStorage implements StorageInterface
 
         // 验证密码
         if (!empty($this->config['password'])) {
-            $this->redis->auth($this->config['password']);
+            $authResult = $this->redis->auth($this->config['password']);
+            if ($authResult === false) {
+                throw new \RuntimeException('Redis 认证失败');
+            }
         }
 
         // 选择数据库
         if (isset($this->config['database'])) {
-            $this->redis->select($this->config['database']);
+            $selectResult = $this->redis->select($this->config['database']);
+            if ($selectResult === false) {
+                throw new \RuntimeException('Redis 选择数据库失败');
+            }
         }
     }
 
@@ -181,6 +236,89 @@ class CoroutineRedisStorage implements StorageInterface
     }
 
     /**
+     * 原子化撤销 Token
+     *
+     * 一次性完成以下操作，避免在多个步骤之间出现"半撤销"状态：
+     *   1. 将 JTI 加入黑名单
+     *   2. 如果传入的 SSO 标记匹配则清理 SSO 标记
+     *   3. 从用户 Token 列表中移除 JTI
+     *   4. 清理 token 详情键
+     *
+     * 推荐在 SSO 场景下使用，确保多步操作的强一致性。
+     *
+     * @param string $jti       JWT ID
+     * @param string $uid       用户 ID
+     * @param string $platform  平台标识
+     * @param int    $ttl       黑名单保留时间（秒）
+     * @return int 受影响键数量
+     */
+    public function atomicRevoke(string $jti, string $uid, string $platform, int $ttl = 3600): int
+    {
+        $keys = [
+            $this->getKey("blacklist:{$jti}"),
+            $this->getKey("sso:{$uid}:{$platform}"),
+            $this->getKey("user:{$uid}:{$platform}:tokens"),
+            $this->getKey("token:{$jti}"),
+        ];
+
+        $result = $this->redis->eval(self::LUA_ATOMIC_REVOKE, [...$keys, (string) max(1, $ttl), $jti], count($keys));
+
+        return (int) $result;
+    }
+
+    /**
+     * 将 JTI 添加到用户的活跃 Token 集合
+     *
+     * @param string $uid       用户 ID
+     * @param string $platform  平台标识
+     * @param string $jti       JWT ID
+     * @param int    $ttl       列表保留时间（秒）
+     * @return bool
+     */
+    public function trackUserToken(string $uid, string $platform, string $jti, int $ttl = 0): bool
+    {
+        $key = $this->getKey("user:{$uid}:{$platform}:tokens");
+        $this->redis->lPush($key, $jti);
+        // 仅保留最近的 50 条以避免列表无限增长
+        $this->redis->lTrim($key, 0, 49);
+        if ($ttl > 0) {
+            $this->redis->expire($key, $ttl);
+        }
+        return true;
+    }
+
+    /**
+     * 设置 SSO 平台 → JTI 映射
+     *
+     * @param string $uid       用户 ID
+     * @param string $platform  平台标识
+     * @param string $jti       JWT ID
+     * @param int    $ttl       过期时间（秒）
+     * @return bool
+     */
+    public function setSsoMapping(string $uid, string $platform, string $jti, int $ttl = 0): bool
+    {
+        $key = $this->getKey("sso:{$uid}:{$platform}");
+        if ($ttl > 0) {
+            return (bool) $this->redis->setex($key, $ttl, $jti);
+        }
+        return (bool) $this->redis->set($key, $jti);
+    }
+
+    /**
+     * 获取 SSO 平台 → JTI 映射
+     */
+    public function getSsoMapping(string $uid, string $platform): ?string
+    {
+        $key = $this->getKey("sso:{$uid}:{$platform}");
+        $value = $this->redis->get($key);
+        if ($value === false || $value === null) {
+            return null;
+        }
+        return (string) $value;
+    }
+
+    /**
      * 清理过期项（Redis会自动清理过期项）
      *
      * @return bool
@@ -254,9 +392,49 @@ class CoroutineRedisStorage implements StorageInterface
     }
 
     /**
+     * 延长键的过期时间
+     *
+     * @param string $key 键名
+     * @param int    $ttl 过期时间（秒）
+     * @return bool
+     */
+    public function touch(string $key, int $ttl): bool
+    {
+        $key = $this->getKey($key);
+        return (bool) $this->redis->expire($key, $ttl);
+    }
+
+    /**
+     * 获取键的剩余过期时间（秒）
+     *
+     * @param string $key 键名
+     * @return int 剩余秒数，-2 表示键不存在，-1 表示永不过期
+     */
+    public function getRemainingTtl(string $key): int
+    {
+        $key = $this->getKey($key);
+        $ttl = $this->redis->ttl($key);
+        return $ttl >= 0 ? $ttl : -2;
+    }
+
+    /**
+     * 清空所有带前缀的键
+     *
+     * @return bool
+     */
+    public function clear(): bool
+    {
+        $keys = $this->redis->keys($this->prefix . '*');
+        if (empty($keys)) {
+            return true;
+        }
+        return (bool) $this->redis->del($keys);
+    }
+
+    /**
      * 获取Redis实例
      */
-    public function getRedis(): CoRedis
+    public function getRedis(): object
     {
         return $this->redis;
     }

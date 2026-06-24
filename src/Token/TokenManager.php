@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Kode\Jwt\Token;
 
 use Kode\Jwt\Contract\TokenManagerInterface;
@@ -104,27 +106,47 @@ class TokenManager implements TokenManagerInterface
 
         if ($platform) {
             // 获取指定平台的Token
-            $key = "user:{$uid}:{$platform}:tokens";
-            $tokenIds = $this->storage->get($key) ?? [];
-
-            foreach ($tokenIds as $jti) {
-                $tokenData = $this->storage->get("token:{$jti}");
-                if ($tokenData && !$this->storage->isBlacklisted($jti)) {
-                    $tokens[] = $tokenData;
-                }
-            }
+            $tokens = $this->collectPlatformTokens($uid, $platform);
         } else {
             // 获取所有平台的Token
             foreach ($this->config->get('platforms', []) as $plat) {
-                $key = "user:{$uid}:{$plat}:tokens";
-                $tokenIds = $this->storage->get($key) ?? [];
+                $tokens = array_merge($tokens, $this->collectPlatformTokens($uid, $plat));
+            }
+        }
 
-                foreach ($tokenIds as $jti) {
-                    $tokenData = $this->storage->get("token:{$jti}");
-                    if ($tokenData && !$this->storage->isBlacklisted($jti)) {
-                        $tokens[] = $tokenData;
-                    }
-                }
+        return $tokens;
+    }
+
+    /**
+     * 收集指定平台下的活跃Token列表
+     *
+     * 使用 getMultiple 批量获取Token详情，避免逐个查询造成的N+1问题。
+     *
+     * @param string $uid 用户ID
+     * @param string $platform 平台标识
+     * @return array<int, array<string, mixed>>
+     */
+    private function collectPlatformTokens(string $uid, string $platform): array
+    {
+        $key = "user:{$uid}:{$platform}:tokens";
+        $tokenIds = $this->storage->get($key) ?? [];
+
+        if (empty($tokenIds)) {
+            return [];
+        }
+
+        // 批量构建Token详情键
+        $tokenKeys = array_map(fn($jti) => "token:{$jti}", $tokenIds);
+
+        // 批量获取Token详情，避免N+1查询
+        $tokenDataMap = $this->storage->getMultiple($tokenKeys);
+
+        $tokens = [];
+        foreach ($tokenIds as $jti) {
+            $tokenData = $tokenDataMap["token:{$jti}"] ?? null;
+            // 过滤黑名单中的Token
+            if ($tokenData && !$this->storage->isBlacklisted($jti)) {
+                $tokens[] = $tokenData;
             }
         }
 
@@ -179,57 +201,57 @@ class TokenManager implements TokenManagerInterface
      */
     public function revokeUserTokens(string $uid, ?string $platform = null): int
     {
-        $revokedCount = 0;
-
         if ($platform) {
             // 注销指定平台的Token
-            $key = "user:{$uid}:{$platform}:tokens";
-            $tokenIds = $this->storage->get($key) ?? [];
+            return $this->revokeTokensFromList($uid, $platform);
+        }
 
-            foreach ($tokenIds as $jti) {
-                $tokenData = $this->storage->get("token:{$jti}");
-                if (is_array($tokenData) && isset($tokenData['token']) && is_string($tokenData['token'])) {
-                    $revoked = $this->guard->invalidate($tokenData['token']);
-                } else {
-                    $ttl = is_array($tokenData) && isset($tokenData['exp'])
-                        ? max(1, (int) $tokenData['exp'] - time())
-                        : 3600;
-                    $revoked = $this->storage->blacklist($jti, $ttl);
-                }
+        // 注销所有平台的Token
+        $revokedCount = 0;
+        foreach ($this->config->get('platforms', []) as $plat) {
+            $revokedCount += $this->revokeTokensFromList($uid, $plat);
+        }
 
-                if ($revoked) {
-                    $revokedCount++;
-                }
+        return $revokedCount;
+    }
+
+    /**
+     * 注销指定用户在指定平台下的所有Token
+     *
+     * 抽取自 revokeUserTokens()，统一处理单个平台的Token注销逻辑：
+     * 优先通过 guard->invalidate() 注销完整Token，无法获取原始Token时
+     * 退化为按 jti 加入黑名单。
+     *
+     * @param string $uid 用户ID
+     * @param string $platform 平台标识
+     * @return int 被注销的Token数量
+     */
+    private function revokeTokensFromList(string $uid, string $platform): int
+    {
+        $key = "user:{$uid}:{$platform}:tokens";
+        $tokenIds = $this->storage->get($key) ?? [];
+
+        $revokedCount = 0;
+        foreach ($tokenIds as $jti) {
+            $tokenData = $this->storage->get("token:{$jti}");
+            if (is_array($tokenData) && isset($tokenData['token']) && is_string($tokenData['token'])) {
+                // 优先通过完整Token执行注销流程
+                $revoked = $this->guard->invalidate($tokenData['token']);
+            } else {
+                // 无法获取原始Token时，按过期时间计算黑名单TTL
+                $ttl = is_array($tokenData) && isset($tokenData['exp'])
+                    ? max(1, (int) $tokenData['exp'] - time())
+                    : 3600;
+                $revoked = $this->storage->blacklist($jti, $ttl);
             }
 
-            // 清空Token列表
-            $this->storage->delete($key);
-        } else {
-            // 注销所有平台的Token
-            foreach ($this->config->get('platforms', []) as $plat) {
-                $key = "user:{$uid}:{$plat}:tokens";
-                $tokenIds = $this->storage->get($key) ?? [];
-
-                foreach ($tokenIds as $jti) {
-                    $tokenData = $this->storage->get("token:{$jti}");
-                    if (is_array($tokenData) && isset($tokenData['token']) && is_string($tokenData['token'])) {
-                        $revoked = $this->guard->invalidate($tokenData['token']);
-                    } else {
-                        $ttl = is_array($tokenData) && isset($tokenData['exp'])
-                            ? max(1, (int) $tokenData['exp'] - time())
-                            : 3600;
-                        $revoked = $this->storage->blacklist($jti, $ttl);
-                    }
-
-                    if ($revoked) {
-                        $revokedCount++;
-                    }
-                }
-
-                // 清空Token列表
-                $this->storage->delete($key);
+            if ($revoked) {
+                $revokedCount++;
             }
         }
+
+        // 清空Token列表
+        $this->storage->delete($key);
 
         return $revokedCount;
     }
@@ -245,7 +267,8 @@ class TokenManager implements TokenManagerInterface
         try {
             $payload = $this->guard->authenticate($token);
             return !$this->storage->isBlacklisted($payload->jti);
-        } catch (\Exception $e) {
+        } catch (\Kode\Jwt\Exception\JwtException $e) {
+            // 仅捕获JWT相关异常，避免吞掉其他系统级错误
             return false;
         }
     }
@@ -268,12 +291,13 @@ class TokenManager implements TokenManagerInterface
     /**
      * 批量清理过期Token
      *
-     * @return int
+     * @return int 清理的Token数量
      */
     public function cleanExpiredTokens(): int
     {
         $result = $this->storage->cleanExpired();
-        return $result ? 1 : 0;
+        // 兼容存储驱动返回 bool 或 int 两种情况，保留实际清理数量
+        return is_int($result) ? $result : ($result ? 1 : 0);
     }
 
     /**

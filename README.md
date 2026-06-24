@@ -1,7 +1,7 @@
 # Kode JWT：一个健壮、全面、现代化的 PHP 8.2+ JWT 包
 
 > **项目名称**：`kode/jwt`  
-> **当前版本**：`v1.8.1`  
+> **当前版本**：`v1.8.2`  
 > **目标**：为现代 PHP 应用提供安全、灵活、高性能的 JWT 身份验证解决方案，支持单点登录（SSO）、多点登录、黑名单管理、自动续期、多平台适配、防重放攻击（Anti-Replay），兼容 FPM、Swoole、RoadRunner 等运行环境。
 
 ---
@@ -875,6 +875,65 @@ try {
 > - `examples/basic_usage.php` — 基础 + expected_claims 校验
 > - `examples/storage_usage.php` — 多存储 + SsoStorageInterface 增强
 > - `examples/advanced_usage.php` — 标准声明 + Nonce + 多签
+
+---
+
+## 🆕 v1.8.2 优化：存储驱动全面补齐 + 安全加固
+
+v1.8.2 聚焦于**接口完整性、安全加固、性能优化**，修复了多个 P0/P1 级别问题。
+
+### 存储驱动接口补齐
+
+v1.8.1 中 `ApcuStorage`、`DatabaseStorage`、`CoroutineRedisStorage`、`MemcachedStorage` 缺少 `touch`/`getRemainingTtl`/`clear` 方法，调用会触发致命错误。v1.8.2 已全部补齐：
+
+| 存储驱动 | touch | getRemainingTtl | clear | SsoStorageInterface |
+|----------|:-----:|:---------------:|:-----:|:-------------------:|
+| RedisStorage | ✅ | ✅ | ✅ | ✅ |
+| MemoryStorage | ✅ | ✅ | ✅ | ✅ |
+| FileStorage | ✅ | ✅ | ✅ | ✅ |
+| NullStorage | ✅ | ✅ | ✅ | ✅ |
+| ApcuStorage | ✅ 新增 | ✅ 新增 | ✅ 新增 | ✅ 新增 |
+| DatabaseStorage | ✅ 新增 | ✅ 新增 | ✅ 新增 | ✅ 新增 |
+| CoroutineRedisStorage | ✅ 新增 | ✅ 新增 | ✅ 新增 | ✅ 新增 |
+| MemcachedStorage | ✅ 新增 | ✅ 新增 | ✅ 新增 | ✅ 新增 |
+
+### 安全加固
+
+- **移除弱密钥默认值**：`KodeJwt::getDefaultConfig()` 中 `secret` 改为空字符串，强制用户配置
+- **移除伪随机 fallback**：`AntiReplay::generateNonce()` 在 `random_bytes` 失败时抛异常而非降级
+- **DatabaseStorage 表名注入防护**：构造函数中用正则校验表名
+- **DatabaseStorage PDO 安全选项**：强制 `ATTR_EMULATE_PREPARES = false`
+- **CoroutineRedisStorage 惰性加载**：移除顶部 `use Swoole\Coroutine\Redis` 硬依赖，改为运行时检测
+
+### 性能优化
+
+- **TokenManager N+1 查询修复**：`getUserTokens()` 改用 `getMultiple()` 批量获取
+- **Parser RSA 公钥缓存**：`verifyRsa()` 缓存已解析的公钥资源，避免重复磁盘 IO
+- **DatabaseStorage 概率清理**：读操作中 `cleanExpired()` 改为 1% 概率触发，不再每次全表扫描
+- **FileStorage 紧凑 JSON**：`set()`/`touch()` 移除 `JSON_PRETTY_PRINT`，减少 IO 开销
+- **FileStorage 共享锁读取**：`get()`/`has()` 改用 `flock(LOCK_SH)` 读取，与 `set()` 的 `LOCK_EX` 对称
+
+### DatabaseStorage SQL 方言自动适配
+
+v1.8.2 之前 `DatabaseStorage` 硬编码 SQLite 方言（`AUTOINCREMENT`、`INSERT OR REPLACE`、`strftime`），但默认 DSN 是 MySQL，导致 MySQL 下不可用。现已根据 DSN 自动检测驱动类型：
+
+```php
+// SQLite 方言
+'INSERT OR REPLACE INTO ...'
+
+// MySQL 方言
+'INSERT ... ON DUPLICATE KEY UPDATE ...'
+```
+
+### MemcachedStorage addServers 修复
+
+v1.8.2 修复了 `addServers` 参数结构 Bug：配置中的关联数组（`['host' => ..., 'port' => ..., 'weight' => ...]`）现在会自动转换为索引数组（`[$host, $port, $weight]`）。
+
+### 全局 `declare(strict_types=1)`
+
+以下文件补充了 `declare(strict_types=1);`，符合 PSR-12 规范：
+
+`TokenManager`、`StorageFactory`、`GuardInterface`、`FileStorage`、`NullStorage`、`ApcuStorage`、`DatabaseStorage`、`CoroutineRedisStorage`、`MemcachedStorage`、`RedisStorage`
 
 ---
 

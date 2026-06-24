@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Kode\Jwt\Storage;
 
 use Kode\Jwt\Contract\SsoStorageInterface;
@@ -378,7 +380,7 @@ class RedisStorage implements SsoStorageInterface
     {
         $key = $this->getKey($key);
         $ttl = $this->redis->ttl($key);
-        return $ttl >= 0 ? $ttl : -2;
+        return is_int($ttl) && $ttl >= 0 ? $ttl : -2;
     }
 
     public function clear(): bool

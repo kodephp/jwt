@@ -18,6 +18,16 @@ class Parser
     protected array $config;
 
     /**
+     * RSA 公钥资源缓存
+     *
+     * 键为公钥内容的 md5 hash，值为 openssl_pkey_get_public 解析后的资源。
+     * 避免每次验签都重复读取公钥文件并解析。
+     *
+     * @var array<string, \OpenSSLAsymmetricKey|resource>
+     */
+    protected array $publicKeyCache = [];
+
+    /**
      * 构造函数
      *
      * @param array<string, mixed> $config 配置数组
@@ -171,6 +181,9 @@ class Parser
     /**
      * 验证RSA签名
      *
+     * 公钥资源会被缓存（以公钥内容的 md5 hash 为键），避免每次验签
+     * 都重复读取公钥文件并调用 openssl_pkey_get_public 解析。
+     *
      * @throws JwtException 当公钥无效时抛出异常
      */
     protected function verifyRsa(string $data, string $signature, string $algorithm): void
@@ -190,12 +203,24 @@ class Parser
             $publicKey = $this->publicKey;
         }
 
-        $key = openssl_pkey_get_public($publicKey);
+        // 以公钥内容的 md5 hash 作为缓存键
+        $cacheKey = md5($publicKey);
 
-        if (!$key) {
-            throw new JwtException('Invalid public key');
+        // 命中缓存则直接复用已解析的公钥资源
+        if (isset($this->publicKeyCache[$cacheKey])) {
+            $key = $this->publicKeyCache[$cacheKey];
+        } else {
+            $key = openssl_pkey_get_public($publicKey);
+
+            if (!$key) {
+                throw new JwtException('Invalid public key');
+            }
+
+            // 缓存解析后的公钥资源
+            $this->publicKeyCache[$cacheKey] = $key;
         }
 
+        /** @phpstan-ignore-next-line PHP 8.3 stub 类型声明与运行时 OpenSSLAsymmetricKey 兼容 */
         $result = openssl_verify($data, $signature, $key, $algorithm);
 
         if ($result !== 1) {
