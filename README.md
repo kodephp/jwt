@@ -1,15 +1,15 @@
-# Kode JWT：一个健壮、全面、现代化的 PHP 8.2+ JWT 包
+# Kode JWT：一个健壮、全面、现代化的 PHP 8.3+ JWT 包
 
 > **项目名称**：`kode/jwt`  
-> **当前版本**：`v1.8.2`  
-> **目标**：为现代 PHP 应用提供安全、灵活、高性能的 JWT 身份验证解决方案，支持单点登录（SSO）、多点登录、黑名单管理、自动续期、多平台适配、防重放攻击（Anti-Replay），兼容 FPM、Swoole、RoadRunner 等运行环境。
+> **当前版本**：`v1.9.0`  
+> **目标**：为现代 PHP 应用提供安全、灵活、高性能的 JWT 身份验证解决方案，支持单点登录（SSO）、多点登录、黑名单管理、自动续期、多平台适配、防重放攻击（Anti-Replay）、JWK 密钥管理、Token 客户端指纹绑定，兼容 FPM、Swoole、RoadRunner 等运行环境。
 
 ---
 
 ## 📌 项目愿景
 
-构建一个**生产级、零侵入、高可扩展**的 JWT 包，专为 PHP 8.1+ 设计，充分利用现代 PHP 特性（如属性、联合类型、泛型模拟、反射优化），并支持主流框架（Laravel、Symfony、ThinkPHP、Hyperf、EasySwoole 等）无缝接入。
-可使用kode相关包或其他通用适合的包快速集成。
+构建一个**生产级、零侵入、高可扩展**的 JWT 包，专为 PHP 8.3+ 设计，充分利用现代 PHP 特性（`readonly class`、类型化类常量、`json_validate()`、`#[\Override]` 属性、`enum`、联合类型、反射优化），并支持主流框架（Laravel、Symfony、ThinkPHP、Hyperf、EasySwoole 等）无缝接入。
+可使用 kode 相关包或其他通用适合的包快速集成。
 
 ---
 
@@ -17,7 +17,7 @@
 
 | 特性 | 说明 |
 |------|------|
-| ✅ **PHP 8.2+ 原生支持** | 使用 `readonly` 类、`readonly` 属性、`enum`、`never`、`true/false` 类型、`intersection types`（模拟）等新特性 |
+| ✅ **PHP 8.3+ 原生支持** | 使用 `readonly class`、类型化类常量（`private const array FOO = [...]`）、`json_validate()`、`#[\Override]` 属性等 PHP 8.3+ 特性 |
 | ✅ **多平台支持** | H5、PC、App、小程序（微信/支付宝/抖音）等，通过 `platform` 声明区分，是否启用平台，平台配置一致或单独配置 |
 | ✅ **单点登录（SSO）** | 同一用户在同一平台仅允许一个有效 Token，支持 Redis Lua 原子化踢出 |
 | ✅ **多点登录（MLO）** | 支持同一用户在多个设备同时登录 |
@@ -31,11 +31,16 @@
 | ✅ **事件驱动** | 提供 `TokenIssued`、`TokenExpired`、`TokenRevoked` 等事件钩子 |
 | ✅ **审计日志** | 可选记录 Token 生成、使用、注销行为，使用通用日志包 |
 | ✅ **加密算法可插拔** | 默认 `HS256` / `RS256`，支持自定义签名器 |
-| 🆕 **防重放攻击（Anti-Replay）** | 基于 Redis Nonce + 滑动窗口，杜绝 Token 被截获后重复使用 |
-| 🆕 **高熵 JTI** | 32 字节（256 bit）密码学安全随机数，远高于 UUID v4 |
-| 🆕 **标准声明（iss/aud/sub）** | 业务级强制校验，防止跨服务/跨租户混用 |
-| 🆕 **时钟漂移容忍** | 跨节点 NTP 偏差场景下，配置 `clock_skew` 即可容错 |
-| 🆕 **Redis 原子化撤销** | Lua 脚本保证"黑名单 + SSO 映射 + 用户 Token 列表"三步原子性 |
+| ✅ **防重放攻击（Anti-Replay）** | 基于 Redis Nonce + 滑动窗口，杜绝 Token 被截获后重复使用 |
+| ✅ **高熵 JTI** | 32 字节（256 bit）密码学安全随机数，远高于 UUID v4 |
+| ✅ **标准声明（iss/aud/sub）** | 业务级强制校验，防止跨服务/跨租户混用 |
+| ✅ **时钟漂移容忍** | 跨节点 NTP 偏差场景下，配置 `clock_skew` 即可容错 |
+| ✅ **Redis 原子化撤销** | Lua 脚本保证"黑名单 + SSO 映射 + 用户 Token 列表"三步原子性 |
+| 🆕 v1.9 **JWK 密钥管理（RFC 7517）** | `Jwk` / `JwkSet` / `KeyConverter` / `JwkFactory`，支持 RSA / EC / oct 三种密钥类型，PEM ↔ JWK 互转，CSPRNG 安全密钥生成 |
+| 🆕 v1.9 **Token 客户端指纹绑定** | `Fingerprint` 组件将 Token 与客户端 UA + IP 前缀绑定，防止跨设备重放，内置可信内网 IP 白名单 |
+| 🆕 v1.9 **算法白名单强制校验** | 三层防御：永久禁用 `none` 算法 → 显式白名单 → 单算法严格匹配，杜绝算法混淆攻击 |
+| 🆕 v1.9 **PHP 8.3 readonly class** | `Jwk`、`JwkSet` 等核心值对象使用 `final readonly class`，运行期不可变，防止密钥被篡改 |
+| 🆕 v1.9 **类型化类常量** | 使用 `private const array SUPPORTED_KTY = [...]` 等 PHP 8.3 类型化常量，强化类型安全 |
 
 ---
 
@@ -47,29 +52,90 @@ src/
 │   ├── TokenManagerInterface.php
 │   ├── StorageInterface.php
 │   ├── GuardInterface.php
-│   └── EventInterface.php
+│   ├── SsoStorageInterface.php     # SSO 高级能力（atomicRevoke/trackUserToken/...）
+│   ├── ReplayProtectionInterface.php
+│   ├── EventInterface.php
+│   ├── EventListener.php
+│   ├── Arrayable.php
+│   ├── Jsonable.php
+│   └── LoggerInterface.php
 ├── Token/              # Token 核心类
-│   ├── Builder.php
-│   ├── Parser.php
+│   ├── Builder.php                  # 签发构造器（含公私钥 mtime 缓存）
+│   ├── Parser.php                   # 解析校验器（含算法白名单三层防御）
 │   ├── Claim.php
-│   └── Payload.php
+│   ├── Payload.php                  # readonly 值对象
+│   └── TokenManager.php
 ├── Guard/              # 守卫机制
-│   ├── BaseGuard.php
+│   ├── BaseGuard.php                # 支持 ttl_unit / refresh_ttl_unit 配置
 │   ├── SsoGuard.php
 │   └── MloGuard.php
 ├── Storage/            # 存储驱动
-│   ├── RedisStorage.php
+│   ├── RedisStorage.php             # + SsoStorageInterface (Lua 原子撤销)
+│   ├── CoroutineRedisStorage.php    # Swoole 协程 Redis
 │   ├── MemoryStorage.php
-│   └── NullStorage.php
+│   ├── FileStorage.php              # sha256 短哈希防 key 碰撞
+│   ├── ApcuStorage.php
+│   ├── DatabaseStorage.php          # MySQL/SQLite 方言自动适配
+│   ├── MemcachedStorage.php
+│   ├── NullStorage.php
+│   ├── RedisReplayProtection.php
+│   └── StorageFactory.php
+├── Key/                # 🆕 v1.9 JWK 密钥管理（RFC 7517）
+│   ├── Jwk.php                      # final readonly class 值对象
+│   ├── JwkSet.php                   # JWK 集合（密钥轮换）
+│   ├── KeyConverter.php             # PEM ↔ JWK 互转（ASN.1 DER 编码）
+│   └── JwkFactory.php               # CSPRNG 安全密钥生成
+├── KeyRotation/        # 密钥轮换
+│   ├── KeyRotationManager.php       # getMultiple 批量优化
+│   └── KeyVersion.php
+├── Security/           # 安全组件
+│   ├── AntiReplay.php               # Nonce 一次性消费 + 滑动窗口
+│   └── Fingerprint.php              # 🆕 v1.9 客户端指纹绑定（UA + IP 前缀）
+├── Signature/          # 多签机制
+│   ├── MultiSignature.php
+│   └── SignatureResult.php
+├── Event/              # 事件系统
+│   ├── BaseEvent.php
+│   ├── EventDispatcher.php
+│   ├── EventServiceProvider.php
+│   ├── TokenIssued.php
+│   ├── TokenExpired.php
+│   ├── TokenRefreshed.php
+│   ├── TokenRevoked.php
+│   ├── TokenBlacklisted.php
+│   └── TokenValidated.php
 ├── Exception/          # 自定义异常
+│   ├── JwtException.php
 │   ├── TokenInvalidException.php
 │   ├── TokenExpiredException.php
-│   └── TokenBlacklistedException.php
-├── Event/              # 事件系统
-│   ├── TokenIssued.php
-│   └── TokenRevoked.php
+│   ├── TokenBlacklistedException.php
+│   └── TokenReplayException.php
 ├── Config/             # 配置管理
 │   └── ConfigLoader.php
+├── Enum/               # 枚举
+│   ├── Algorithm.php
+│   ├── GuardMode.php
+│   └── StorageType.php
+├── Log/                # 日志适配
+│   ├── FileLogger.php
+│   ├── NullLogger.php
+│   ├── MonologAdapter.php
+│   └── LoggerFactory.php
+├── Metrics/            # 监控指标
+│   └── PrometheusMetrics.php
+├── OAuth2/             # OAuth2 混合模式
+│   ├── HybridProvider.php
+│   └── HybridTokenResponse.php
+├── OpenId/             # OpenID Connect
+│   ├── IdTokenBuilder.php
+│   └── UserInfo.php
+├── Support/            # 辅助工具
+│   ├── ImmutableDto.php
+│   └── PhpFeature.php
+├── Console/            # CLI 命令
+│   ├── InstallCommand.php
+│   ├── KeyGenerateCommand.php
+│   └── TokenCommand.php
 └── KodeJwt.php         # 主门面/工厂类
 ```
 
@@ -745,7 +811,7 @@ $payload = Payload::create(
 
 ---
 
-## 🚀 快速开始（v1.8.x）
+## 🚀 快速开始（v1.9.x）
 
 ### 1. 最小化示例
 
@@ -875,6 +941,221 @@ try {
 > - `examples/basic_usage.php` — 基础 + expected_claims 校验
 > - `examples/storage_usage.php` — 多存储 + SsoStorageInterface 增强
 > - `examples/advanced_usage.php` — 标准声明 + Nonce + 多签
+
+---
+
+## 🆕 v1.9.0 新特性：PHP 8.3+ + JWK 模块 + Token 指纹 + 算法白名单
+
+v1.9.0 是一次**主版本升级**，将最低 PHP 版本提升至 8.3+，引入 JWK 密钥管理、Token 客户端指纹绑定、算法白名单三层防御，并全面应用 PHP 8.3 现代化特性。
+
+### 1. JWK 密钥管理模块（RFC 7517 / RFC 7518）
+
+新增 `src/Key/` 目录，提供完整的 JWK 工作流：
+
+| 类 | 说明 |
+|------|------|
+| `Jwk` | `final readonly class` 值对象，表示一个 JWK，支持 RSA / EC / oct 三种 kty |
+| `JwkSet` | JWK 集合，用于密钥轮换场景下按 `kid` 选择密钥 |
+| `KeyConverter` | PEM ↔ JWK 互转，包含 ASN.1 DER 编码实现 RSA SubjectPublicKeyInfo 构造 |
+| `JwkFactory` | CSPRNG 安全密钥生成（`random_bytes`），RSA 默认 2048 位（NIST SP 800-131A） |
+
+#### 1.1 生成对称密钥（oct）
+
+```php
+use Kode\Jwt\Key\JwkFactory;
+
+// 生成 HS256 密钥（32 字节）
+$jwk = JwkFactory::generateOctKey('HS256');
+echo $jwk->toJson();
+// {"kty":"oct","k":"...","use":"sig","alg":"HS256","kid":"oct-xxxx..."}
+
+// 自动按算法选择密钥长度：HS256=32B / HS384=48B / HS512=64B
+```
+
+#### 1.2 生成 RSA 密钥对
+
+```php
+// 默认 2048 位（最低 2048，NIST 建议）
+$pair = JwkFactory::generateRsaKeyPair(bits: 2048, alg: 'RS256');
+
+$privateJwk = $pair['private'];   // 含 d/p/q/dp/dq/qi，用于签发
+$publicJwk  = $pair['public'];    // 仅含 n/e，可安全分发
+
+// 公钥分发前可再调用 toPublic() 防御性剥离
+$distributable = $privateJwk->toPublic();
+```
+
+#### 1.3 PEM ↔ JWK 互转
+
+```php
+use Kode\Jwt\Key\KeyConverter;
+
+// PEM → JWK
+$jwk = KeyConverter::rsaPublicKeyToJwk('/path/to/public.pem', kid: 'key-1', alg: 'RS256');
+
+// JWK → PEM（仅 RSA 公钥）
+$pem = KeyConverter::jwkToPem($jwk);
+```
+
+#### 1.4 JWK Set 与密钥选择
+
+```php
+use Kode\Jwt\Key\JwkSet;
+
+$set = JwkSet::create()
+    ->with($jwk1)
+    ->with($jwk2);
+
+// 按 kid 选择
+$selected = $set->get('key-1');
+
+// 按算法筛选
+$candidates = $set->findByAlgorithm('RS256');
+
+// 安全分发（自动剥离所有私钥参数）
+$publicSet = $set->toPublic();
+```
+
+#### 1.5 安全设计要点
+
+- **不可变性**：`Jwk` 使用 `final readonly class`，构造完成后无法修改任何属性，防止密钥在传递中被篡改
+- **私钥隔离**：`toPublic()` 返回新实例（剥离 `d/p/q/dp/dq/qi/k` 等私钥参数），原对象仍可继续用于签发
+- **脱敏 `__toString`**：`echo $jwk` 仅输出 `Jwk(kty=RSA, kid=..., alg=RS256, private=no)`，绝不泄露密钥内容
+- **kid 自动生成**：使用 8 字节 CSPRNG 随机数（16 位十六进制字符串）
+
+---
+
+### 2. Token 客户端指纹绑定（Fingerprint）
+
+新增 `src/Security/Fingerprint.php`，将 Token 与客户端环境（UA + IP 前缀）绑定，防止：
+
+- Token 被截获后在不同设备/浏览器重放
+- 跨网络环境重放（如开发环境 Token 流入生产）
+
+#### 2.1 基本用法
+
+```php
+use Kode\Jwt\Security\Fingerprint;
+
+$fp = new Fingerprint();
+
+// 计算指纹（基于 UA + IP 前缀）
+$context = [
+    'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? '',
+    'ip'         => $_SERVER['REMOTE_ADDR'] ?? '',
+];
+$fingerprintHash = $fp->compute($context);
+
+// 签发时绑定（业务层将 $fingerprintHash 写入 Payload.custom.fingerprint）
+$payload = Payload::create(
+    uid: 123,
+    platform: 'web',
+    exp: time() + 3600,
+    iat: time(),
+    jti: Payload::generateJti(),
+    customData: ['fingerprint' => $fingerprintHash],
+);
+
+// 验证时校验
+$fp->ensureMatch($context, $payload->getCustom('fingerprint'));
+// 不匹配时抛出 JwtException
+```
+
+#### 2.2 安全策略
+
+- **IP 前缀归一化**：默认使用 IPv4 `/24`、IPv6 `/64` 前缀，避免 NAT 网络下频繁切换 IP 导致误判
+- **可信内网白名单**：`127.`、`10.`、`192.168.`、`172.16.`～`172.31.` 等内网 IP 自动跳过校验，避免开发/测试环境误伤
+- **常量时间比较**：使用 `hash_equals()` 防止时序攻击
+- **可配置字段**：支持 `ipPrefixOnly` 模式（仅校验 IP 前缀，不校验 UA），适配移动端 UA 频繁变化的场景
+
+---
+
+### 3. 算法白名单三层防御
+
+`Parser::ensureAllowedAlgorithm()` 强化算法校验，杜绝算法混淆攻击（Algorithm Confusion Attack）：
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ 防御层 1：永久禁用 "none" 算法                            │
+│   即使配置允许，"none" 也直接拒绝                          │
+├─────────────────────────────────────────────────────────┤
+│ 防御层 2：显式白名单（allowed_algorithms 数组）            │
+│   适用于密钥轮换、多算法并存场景                           │
+│   Token alg 必须命中白名单                                │
+├─────────────────────────────────────────────────────────┤
+│ 防御层 3：单算法严格匹配（algo 单值）                      │
+│   适用于单算法场景                                        │
+│   Token alg 必须与配置 algo 严格相等                       │
+└─────────────────────────────────────────────────────────┘
+```
+
+#### 配置示例
+
+```php
+// 单算法场景（默认）
+'guards' => [
+    'api' => [
+        'algo' => 'RS256',
+    ],
+],
+
+// 多算法并存场景（密钥轮换）
+'guards' => [
+    'api' => [
+        'allowed_algorithms' => ['RS256', 'RS384'],  // 显式白名单
+        // 'algo' 可不设置
+    ],
+],
+```
+
+#### 攻击场景示例
+
+```
+攻击者构造：alg=HS256，用服务端 RS256 公钥当 HMAC 密钥签名
+↓
+防御层 3 触发：Token alg=HS256 ≠ 配置 algo=RS256 → 拒绝
+防御层 2 触发：HS256 不在 allowed_algorithms=[RS256, RS384] 中 → 拒绝
+```
+
+---
+
+### 4. PHP 8.3 现代化特性全面应用
+
+| 特性 | 应用位置 | 说明 |
+|------|----------|------|
+| `readonly class` | `Jwk`、`JwkSet` | 整个类不可变，构造后任何属性不可修改 |
+| 类型化类常量 | `Jwk::SUPPORTED_KTY`、`JwkFactory::ALG_KEY_BYTES`、`Fingerprint::DEFAULT_FIELDS` 等 | `private const array FOO = [...]` 强化类型安全 |
+| `json_validate()` | `Jwk::fromJson()` | 替代 `json_decode` + `json_last_error` 检查的繁琐写法 |
+| `#[\Override]` 属性 | `Jwk::toArray()`、`Jwk::toJson()`、`Jwk::__toString()` | 显式声明方法重写，防止子类意外覆盖 |
+
+---
+
+### 5. v1.9.0 其他重要改进
+
+- **移除 `src/Stub/RedisStub.php`**：移除通过 `autoload.files` 全局别名化 `Redis` 类的反模式，改为运行时检测
+- **存储 `set()` 默认 TTL 统一为 0**：所有存储驱动 `set($key, $value, int $ttl = 0)` 语义一致，0 表示永不过期
+- **`Payload::quickCreate` 修复**：不再用 `refresh_ttl` 覆盖 `ttl`，避免 TTL 配置失效
+- **`MultiSignature::findSigner` 修复**：默认 keyId 与 `sign()` 一致（`signer_{index}`）
+- **`RedisStorage::getRemainingTtl` 修复**：永不过期的 Key 返回 -1 而非误报 TTL
+- **`ApcuStorage::set` 修复**：主 Key 写入失败时不再写入 meta_ttl
+- **`FileStorage` 防 key 碰撞**：路径增加 sha256 短哈希
+- **`KeyRotationManager::getAllKeys` 优化**：使用 `getMultiple()` 批量获取，消除 N+1 查询
+- **`Parser` / `Builder` 公私钥缓存**：按文件路径 + mtime 缓存，避免重复 IO
+- **`BaseGuard::refresh` 优化**：提取 `canRefreshPayload()` 避免二次解析 Token
+
+---
+
+### 6. 测试覆盖
+
+v1.9.0 测试套件：**145 个测试，413 个断言**，新增测试覆盖：
+
+- `tests/JwkTest.php`（19 个测试）：Jwk 创建/序列化、kty 归一化、toPublic、fromArray/fromJson 往返、computeKid 确定性、JwkSet 操作、工厂密钥生成、RSA 与 openssl_sign/verify 端到端验证
+- `tests/FingerprintTest.php`（12 个测试）：相同上下文相同哈希、不同 UA/IP 不同哈希、IP 前缀归一化、verify 匹配/失配、可信内网 IP 跳过、ensureMatch 异常、IPv6 支持、ipPrefixOnly 禁用选项
+
+回归测试：
+- `testQuickCreateDoesNotOverrideTtlWithRefreshTtl`
+- `testTtlUnitSecondsIsRespected`
+- `testRefreshDoesNotDoubleParseToken`
 
 ---
 
@@ -3454,13 +3735,15 @@ class CustomGuard implements GuardInterface
 
 ### 必需依赖
 
-- PHP >= 8.1
+- PHP >= 8.3
 - ext-json
 - ext-openssl
 
 ### 可选依赖
 
 - ext-redis：Redis 存储驱动
+- ext-apcu：APCu 存储驱动
+- ext-memcached：Memcached 存储驱动
 - ext-pdo：数据库存储驱动
 - ext-swoole：Swoole 协程支持
 

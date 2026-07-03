@@ -31,6 +31,23 @@ class Builder
     protected array $config;
 
     /**
+     * RSA 私钥资源缓存
+     *
+     * 键为私钥内容的 md5 hash，值为 openssl_pkey_get_private 解析后的资源。
+     * 避免每次签发都重复读取私钥文件并解析。
+     *
+     * @var array<string, \OpenSSLAsymmetricKey|resource>
+     */
+    protected array $privateKeyCache = [];
+
+    /**
+     * 私钥文件内容缓存（按文件路径 + mtime 缓存）
+     *
+     * @var array<string, array{mtime: int, content: string}>
+     */
+    protected array $privateKeyFileCache = [];
+
+    /**
      * 构造函数
      *
      * @param array<string, mixed> $config 配置数组
@@ -332,6 +349,9 @@ class Builder
     /**
      * RSA签名
      *
+     * 私钥资源会被缓存（以私钥内容的 md5 hash 为键），避免每次签发都重复解析。
+     * 私钥文件内容也按"路径 + mtime"缓存，避免每次签发都执行 file_get_contents。
+     *
      * @throws JwtException 当私钥无效时抛出异常
      */
     protected function signRsa(string $data, string $algorithm): string
@@ -342,19 +362,24 @@ class Builder
             throw new JwtException('Private key is required for RSA algorithms');
         }
 
-        // 如果是文件路径，读取私钥
+        // 如果是文件路径，按"路径 + mtime"缓存读取私钥内容
         if (is_file($privateKey)) {
-            $privateKeyContent = file_get_contents($privateKey);
-            if ($privateKeyContent === false) {
-                throw new JwtException('Failed to read private key file');
-            }
-            $privateKey = $privateKeyContent;
+            $privateKey = $this->readPrivateKeyFile($privateKey);
         }
 
-        $key = openssl_pkey_get_private($privateKey);
+        // 以私钥内容的 md5 hash 作为缓存键
+        $cacheKey = md5($privateKey);
 
-        if (!$key) {
-            throw new JwtException('Invalid private key');
+        if (isset($this->privateKeyCache[$cacheKey])) {
+            $key = $this->privateKeyCache[$cacheKey];
+        } else {
+            $key = openssl_pkey_get_private($privateKey);
+
+            if (!$key) {
+                throw new JwtException('Invalid private key');
+            }
+
+            $this->privateKeyCache[$cacheKey] = $key;
         }
 
         $signature = '';
@@ -365,6 +390,32 @@ class Builder
         }
 
         return rtrim(strtr(base64_encode($signature), '+/', '-_'), '=');
+    }
+
+    /**
+     * 按"路径 + mtime"缓存读取私钥文件内容
+     *
+     * 文件被修改（mtime 变化）时自动失效，重新读取。
+     */
+    protected function readPrivateKeyFile(string $path): string
+    {
+        clearstatcache(true, $path);
+        $mtime = @filemtime($path);
+        if ($mtime === false) {
+            throw new JwtException('Failed to stat private key file');
+        }
+
+        if (isset($this->privateKeyFileCache[$path]) && $this->privateKeyFileCache[$path]['mtime'] === $mtime) {
+            return $this->privateKeyFileCache[$path]['content'];
+        }
+
+        $content = file_get_contents($path);
+        if ($content === false) {
+            throw new JwtException('Failed to read private key file');
+        }
+
+        $this->privateKeyFileCache[$path] = ['mtime' => $mtime, 'content' => $content];
+        return $content;
     }
 
     /**

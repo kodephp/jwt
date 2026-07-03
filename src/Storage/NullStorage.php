@@ -4,16 +4,19 @@ declare(strict_types=1);
 
 namespace Kode\Jwt\Storage;
 
+use Kode\Jwt\Contract\SsoStorageInterface;
 use Kode\Jwt\Contract\StorageInterface;
 
 /**
  * 空存储实现
  *
- * 用于测试或禁用存储功能的场景，所有操作均为空操作
+ * 用于测试或禁用存储功能的场景，所有操作均为空操作。
+ * 同时声明实现 SsoStorageInterface，使 instanceof 探测能正确识别能力，
+ * 避免已实现的 SSO 方法沦为死代码。
  *
  * @warning 仅用于测试/禁用存储，不适用于生产环境，黑名单功能完全失效
  */
-class NullStorage implements StorageInterface
+class NullStorage implements StorageInterface, SsoStorageInterface
 {
     /**
      * 设置键值对（空操作）

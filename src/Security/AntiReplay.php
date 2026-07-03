@@ -103,7 +103,7 @@ class AntiReplay
                 'prefix'              => $replayConfig['prefix'] ?? 'kode:jwt:',
                 'ttl'                 => (int) ($replayConfig['ttl'] ?? 3600),
                 'sliding_window'      => (int) ($replayConfig['window'] ?? $this->windowSeconds),
-                'sliding_max_requests'=> (int) ($replayConfig['max_requests'] ?? $this->maxRequests),
+                'sliding_max_requests' => (int) ($replayConfig['max_requests'] ?? $this->maxRequests),
             ]
         );
 

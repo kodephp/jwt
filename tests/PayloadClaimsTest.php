@@ -119,6 +119,24 @@ final class PayloadClaimsTest extends TestCase
     }
 
     /**
+     * 验证 quickCreate 不再用 refresh_ttl 覆盖 ttl（修复 v1.8.2 之前的语义错误）
+     */
+    public function testQuickCreateDoesNotOverrideTtlWithRefreshTtl(): void
+    {
+        $before = time();
+
+        $payload = Payload::quickCreate([
+            'uid' => 9,
+            'platform' => 'web',
+        ], ['ttl' => 60, 'refresh_ttl' => 20160]);
+
+        $expectedExp = $before + 60 * 60;
+        // exp 应基于 ttl（60 分钟）而非 refresh_ttl（20160 分钟）
+        self::assertGreaterThanOrEqual($expectedExp, $payload->exp);
+        self::assertLessThanOrEqual($expectedExp + 2, $payload->exp);
+    }
+
+    /**
      * 验证 setEncryptedData 在 readonly 模式下返回新实例
      */
     public function testSetEncryptedDataReturnsNewInstance(): void

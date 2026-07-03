@@ -199,11 +199,10 @@ final readonly class Payload implements Arrayable
     {
         $now = time();
 
-        $ttl = $config['ttl'] ?? 1440;
-
-        if (isset($config['refresh_ttl'])) {
-            $ttl = $config['refresh_ttl'];
-        }
+        // 过期时间统一使用 ttl（按分钟解析，与历史行为保持一致）。
+        // refresh_ttl 是刷新窗口期，不应被用作 Token 自身的过期时间，
+        // 否则会让短时 Token 寿命错误地变成长时刷新窗口。
+        $ttl = (int) ($config['ttl'] ?? 1440);
 
         $exp = $now + $ttl * 60;
         $jti = self::generateJti();

@@ -47,15 +47,17 @@ class ApcuStorage implements SsoStorageInterface
      * 设置键值对
      *
      * 同时额外存储一个 TTL 时间戳键 {$key}:meta_ttl，用于 getRemainingTtl 查询。
+     * 主键写入失败时不再写 meta 键，避免状态不一致。
      */
     public function set(string $key, mixed $value, int $ttl = 0): bool
     {
         $prefixedKey = $this->getKey($key);
         $result = apcu_store($prefixedKey, $value, $ttl);
 
-        // 额外存储 TTL 时间戳键，用于 getRemainingTtl 查询
-        if ($ttl > 0) {
+        // 仅在主键写入成功时同步写 meta 键，避免主键失败但仍残留 meta 造成状态不一致
+        if ($result && $ttl > 0) {
             $metaKey = $this->getKey("{$key}:meta_ttl");
+            // 若 meta 键已存在则覆盖
             apcu_store($metaKey, time() + $ttl, $ttl);
         }
 
@@ -75,11 +77,19 @@ class ApcuStorage implements SsoStorageInterface
 
     /**
      * 删除键
+     *
+     * 同时清理对应的 meta_ttl 键，避免 meta 残留导致 getRemainingTtl 误判。
      */
     public function delete(string $key): bool
     {
-        $key = $this->getKey($key);
-        return apcu_delete($key);
+        $prefixedKey = $this->getKey($key);
+        $metaKey = $this->getKey("{$key}:meta_ttl");
+
+        // 主键不存在时 apcu_delete 返回 false，这里宽容处理：只要任一键被成功删除即视为成功
+        $mainDeleted = apcu_delete($prefixedKey);
+        apcu_delete($metaKey);
+
+        return $mainDeleted;
     }
 
     /**

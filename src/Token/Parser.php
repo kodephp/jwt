@@ -28,6 +28,15 @@ class Parser
     protected array $publicKeyCache = [];
 
     /**
+     * 公钥文件内容缓存（按文件路径 + mtime 缓存）
+     *
+     * 避免每次验签都执行 file_get_contents。当文件 mtime 变化时自动失效。
+     *
+     * @var array<string, array{mtime: int, content: string}>
+     */
+    protected array $publicKeyFileCache = [];
+
+    /**
      * 构造函数
      *
      * @param array<string, mixed> $config 配置数组
@@ -51,8 +60,12 @@ class Parser
      * @param array<string, mixed> $expectedClaims 期望的声明约束（如 iss / aud / sub）
      * @return Payload
      */
-    public function parse(string $token, ?string $expectedPlatform = null, bool $ignoreExpiration = false, array $expectedClaims = []): Payload
-    {
+    public function parse(
+        string $token,
+        ?string $expectedPlatform = null,
+        bool $ignoreExpiration = false,
+        array $expectedClaims = []
+    ): Payload {
         $parts = explode('.', $token);
 
         if (count($parts) !== 3) {
@@ -183,6 +196,7 @@ class Parser
      *
      * 公钥资源会被缓存（以公钥内容的 md5 hash 为键），避免每次验签
      * 都重复读取公钥文件并调用 openssl_pkey_get_public 解析。
+     * 公钥文件内容也按"路径 + mtime"缓存，避免每次验签都执行 file_get_contents。
      *
      * @throws JwtException 当公钥无效时抛出异常
      */
@@ -192,13 +206,9 @@ class Parser
             throw new JwtException('Public key is required for RSA algorithms');
         }
 
-        // 如果是文件路径，读取公钥
+        // 如果是文件路径，按"路径 + mtime"缓存读取公钥内容，避免每次验签都执行文件 IO
         if (is_file($this->publicKey)) {
-            $publicKeyContent = file_get_contents($this->publicKey);
-            if ($publicKeyContent === false) {
-                throw new JwtException('Failed to read public key file');
-            }
-            $publicKey = $publicKeyContent;
+            $publicKey = $this->readPublicKeyFile($this->publicKey);
         } else {
             $publicKey = $this->publicKey;
         }
@@ -220,12 +230,37 @@ class Parser
             $this->publicKeyCache[$cacheKey] = $key;
         }
 
-        /** @phpstan-ignore-next-line PHP 8.3 stub 类型声明与运行时 OpenSSLAsymmetricKey 兼容 */
         $result = openssl_verify($data, $signature, $key, $algorithm);
 
         if ($result !== 1) {
             throw new TokenInvalidException('Invalid token signature');
         }
+    }
+
+    /**
+     * 按"路径 + mtime"缓存读取公钥文件内容
+     *
+     * 文件被修改（mtime 变化）时自动失效，重新读取。
+     */
+    protected function readPublicKeyFile(string $path): string
+    {
+        clearstatcache(true, $path);
+        $mtime = @filemtime($path);
+        if ($mtime === false) {
+            throw new JwtException('Failed to stat public key file');
+        }
+
+        if (isset($this->publicKeyFileCache[$path]) && $this->publicKeyFileCache[$path]['mtime'] === $mtime) {
+            return $this->publicKeyFileCache[$path]['content'];
+        }
+
+        $content = file_get_contents($path);
+        if ($content === false) {
+            throw new JwtException('Failed to read public key file');
+        }
+
+        $this->publicKeyFileCache[$path] = ['mtime' => $mtime, 'content' => $content];
+        return $content;
     }
 
     /**
@@ -268,26 +303,45 @@ class Parser
     }
 
     /**
-     * 校验算法是否符合配置约束
+     * 算法白名单强制校验
      *
-     * 防止攻击者通过篡改 Header 的 alg 字段绕过预期签名策略。
+     * 安全防线（按优先级）：
+     *  1. 永久禁用 "none" 算法，防止未签名 Token 攻击
+     *  2. 若配置 allowed_algorithms 数组，则 Token alg 必须命中白名单（适用于密钥轮换多算法并存场景）
+     *  3. 若配置 algo 单值，则 Token alg 必须严格匹配，防止算法混淆攻击
+     *     （例如：服务端用 RS256 公钥，攻击者伪造 HS256 Token 用公钥当密钥签名）
      *
-     * @param string $actualAlgorithm Token 头部声明的算法
-     * @param string $token 原始 Token
-     * @return void
+     * @param string $actualAlgorithm Token header 中的 alg 值
+     * @param string $token 原始 Token 字符串（用于异常上下文）
+     * @throws TokenInvalidException 当算法被禁用或不匹配时抛出
      */
     protected function ensureAllowedAlgorithm(string $actualAlgorithm, string $token): void
     {
-        $expectedAlgorithm = strtoupper((string) ($this->config['algo'] ?? ''));
-        $actualAlgorithm = strtoupper($actualAlgorithm);
+        $actualUpper = strtoupper($actualAlgorithm);
 
-        if ($actualAlgorithm === 'NONE') {
+        // 1. 永久禁用 none 算法
+        if ($actualUpper === 'NONE') {
             throw new TokenInvalidException('The "none" algorithm is forbidden', token: $token);
         }
 
-        if ($expectedAlgorithm !== '' && $actualAlgorithm !== $expectedAlgorithm) {
+        // 2. 显式白名单优先（适用于密钥轮换、多算法并存场景）
+        $allowedAlgorithms = $this->config['allowed_algorithms'] ?? null;
+        if (is_array($allowedAlgorithms) && !empty($allowedAlgorithms)) {
+            $allowedUpper = array_map('strtoupper', array_map('strval', $allowedAlgorithms));
+            if (!in_array($actualUpper, $allowedUpper, true)) {
+                throw new TokenInvalidException(
+                    "Algorithm not allowed: {$actualAlgorithm}. Allowed: " . implode(', ', $allowedUpper),
+                    token: $token
+                );
+            }
+            return;
+        }
+
+        // 3. 单算法严格匹配，防止算法混淆攻击
+        $expectedAlgorithm = strtoupper((string) ($this->config['algo'] ?? ''));
+        if ($expectedAlgorithm !== '' && $actualUpper !== $expectedAlgorithm) {
             throw new TokenInvalidException(
-                "Algorithm mismatch: expected {$expectedAlgorithm}, got {$actualAlgorithm}",
+                "Algorithm mismatch: expected {$expectedAlgorithm}, got {$actualUpper}",
                 token: $token
             );
         }

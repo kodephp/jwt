@@ -109,8 +109,10 @@ final class MultiSignature
 
     private function findSigner(string $keyId): ?array
     {
-        foreach ($this->signers as $signer) {
-            $id = $signer['keyId'] ?? '';
+        // 与 sign()/getSignerKeyIds()/removeSigner() 保持一致：
+        // 缺省 keyId 时按 "signer_{index}" 生成，确保 verify 能匹配到 sign 阶段生成的 keyId。
+        foreach ($this->signers as $index => $signer) {
+            $id = $signer['keyId'] ?? "signer_{$index}";
             if ($id === $keyId) {
                 return $signer;
             }

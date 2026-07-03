@@ -26,7 +26,7 @@ class MemoryStorage implements SsoStorageInterface
         $this->limit = $config['limit'] ?? 10000;
     }
 
-    public function set(string $key, mixed $value, int $ttl = 3600): bool
+    public function set(string $key, mixed $value, int $ttl = 0): bool
     {
         if (count($this->storage) >= $this->limit) {
             array_shift($this->storage);

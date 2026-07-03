@@ -414,7 +414,16 @@ class CoroutineRedisStorage implements SsoStorageInterface
     {
         $key = $this->getKey($key);
         $ttl = $this->redis->ttl($key);
-        return $ttl >= 0 ? $ttl : -2;
+
+        // Redis TTL 命令返回值约定：
+        //   -2 : 键不存在
+        //   -1 : 键存在但无关联过期时间（永不过期）
+        //  >=0 : 剩余秒数
+        if (!is_int($ttl)) {
+            return -2;
+        }
+
+        return $ttl === -2 ? -2 : $ttl;
     }
 
     /**

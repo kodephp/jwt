@@ -1,13 +1,14 @@
-# Kode JWT: A Robust, Comprehensive, Modern PHP 8.1+ JWT Package
+# Kode JWT: A Robust, Comprehensive, Modern PHP 8.3+ JWT Package
 
-> **Project Name**: `kode/jwt`  
-> **Goal**: Provide a secure, flexible, high-performance JWT authentication solution for modern PHP applications, supporting Single Sign-On (SSO), Multi-Login, blacklist management, automatic renewal, multi-platform adaptation, and compatibility with FPM, Swoole, RoadRunner, and other runtime environments.
+> **Project Name**: `kode/jwt`
+> **Current Version**: `v1.9.0`
+> **Goal**: Provide a secure, flexible, high-performance JWT authentication solution for modern PHP applications, supporting Single Sign-On (SSO), Multi-Login, blacklist management, automatic renewal, multi-platform adaptation, Anti-Replay, JWK key management (RFC 7517), Token client fingerprint binding, and compatibility with FPM, Swoole, RoadRunner, and other runtime environments.
 
 ---
 
 ## 📌 Project Vision
 
-Build a **production-grade, zero-invasion, highly extensible** JWT package designed specifically for PHP 8.1+, making full use of modern PHP features (such as attributes, union types, generic simulation, reflection optimization), and supporting seamless integration with mainstream frameworks (Laravel, Symfony, ThinkPHP, Hyperf, EasySwoole, etc.).
+Build a **production-grade, zero-invasion, highly extensible** JWT package designed specifically for PHP 8.3+, making full use of modern PHP features (`readonly class`, typed class constants, `json_validate()`, `#[\Override]` attribute, `enum`, union types, reflection optimization), and supporting seamless integration with mainstream frameworks (Laravel, Symfony, ThinkPHP, Hyperf, EasySwoole, etc.).
 
 Quickly integrate using kode-related packages or other suitable general-purpose packages.
 
@@ -17,7 +18,7 @@ Quickly integrate using kode-related packages or other suitable general-purpose 
 
 | Feature | Description |
 |---------|-------------|
-| ✅ **PHP 8.1+ Native Support** | Uses `readonly` properties, `enum`, `never`, `true/false` types, `intersection types` (simulation), and other new features |
+| ✅ **PHP 8.3+ Native Support** | Uses `readonly class`, typed class constants (`private const array FOO = [...]`), `json_validate()`, `#[\Override]` attribute, `enum`, union types, and other modern features |
 | ✅ **Multi-platform Support** | H5, PC, App, mini-programs (WeChat/Alipay/Douyin), etc., distinguished by `platform` declaration, with configurable platform settings |
 | ✅ **Single Sign-On (SSO)** | Only one valid Token per user per platform |
 | ✅ **Multi-Login (MLO)** | Supports simultaneous login on multiple devices for the same user |
@@ -31,6 +32,16 @@ Quickly integrate using kode-related packages or other suitable general-purpose 
 | ✅ **Event-driven** | Provides event hooks such as `TokenIssued`, `TokenExpired`, `TokenRevoked` |
 | ✅ **Audit Log** | Optional logging of Token generation, usage, and revocation behavior using general logging packages |
 | ✅ **Pluggable Encryption Algorithm** | Default `HS256` / `RS256`, supports custom signers |
+| ✅ **Anti-Replay** | Based on Redis Nonce + sliding window to prevent Token replay attacks |
+| ✅ **High-entropy JTI** | 32-byte (256-bit) cryptographically secure random number, far higher than UUID v4 |
+| ✅ **Standard Claims (iss/aud/sub)** | Business-level forced validation to prevent cross-service/cross-tenant misuse |
+| ✅ **Clock Skew Tolerance** | Configurable `clock_skew` for NTP deviation scenarios in multi-node deployments |
+| ✅ **Redis Atomic Revocation** | Lua script guarantees "blacklist + SSO mapping + user Token list" three-step atomicity |
+| 🆕 v1.9 **JWK Key Management (RFC 7517)** | `Jwk` / `JwkSet` / `KeyConverter` / `JwkFactory`, supports RSA / EC / oct key types, PEM ↔ JWK conversion, CSPRNG secure key generation |
+| 🆕 v1.9 **Token Client Fingerprint Binding** | `Fingerprint` component binds Token to client UA + IP prefix, prevents cross-device replay, with built-in trusted intranet IP whitelist |
+| 🆕 v1.9 **Algorithm Allowlist Three-Layer Defense** | Permanently disable `none` algorithm → explicit allowlist → single algorithm strict matching, prevents algorithm confusion attacks |
+| 🆕 v1.9 **PHP 8.3 readonly class** | Core value objects like `Jwk`, `JwkSet` use `final readonly class`, immutable at runtime to prevent key tampering |
+| 🆕 v1.9 **Typed Class Constants** | Uses `private const array SUPPORTED_KTY = [...]` and other PHP 8.3 typed constants for stronger type safety |
 
 ---
 
@@ -42,29 +53,68 @@ src/
 │   ├── TokenManagerInterface.php
 │   ├── StorageInterface.php
 │   ├── GuardInterface.php
+│   ├── SsoStorageInterface.php
 │   └── EventInterface.php
 ├── Token/              # Token core classes
 │   ├── Builder.php
-│   ├── Parser.php
+│   ├── Parser.php       # Algorithm allowlist three-layer defense
 │   ├── Claim.php
-│   └── Payload.php
+│   ├── Payload.php      # readonly value object
+│   └── TokenManager.php
 ├── Guard/              # Guard mechanisms
 │   ├── BaseGuard.php
 │   ├── SsoGuard.php
 │   └── MloGuard.php
 ├── Storage/            # Storage drivers
 │   ├── RedisStorage.php
+│   ├── CoroutineRedisStorage.php
 │   ├── MemoryStorage.php
+│   ├── FileStorage.php
+│   ├── ApcuStorage.php
+│   ├── DatabaseStorage.php
+│   ├── MemcachedStorage.php
 │   └── NullStorage.php
+├── Key/                # 🆕 v1.9 JWK key management (RFC 7517)
+│   ├── Jwk.php          # final readonly class value object
+│   ├── JwkSet.php       # JWK Set for key rotation
+│   ├── KeyConverter.php # PEM ↔ JWK conversion (ASN.1 DER)
+│   └── JwkFactory.php   # CSPRNG secure key generation
+├── KeyRotation/        # Key rotation
+│   ├── KeyRotationManager.php
+│   └── KeyVersion.php
+├── Security/           # Security components
+│   ├── AntiReplay.php   # Nonce one-time consumption + sliding window
+│   └── Fingerprint.php  # 🆕 v1.9 Client fingerprint binding (UA + IP prefix)
+├── Signature/          # Multi-signature
+│   ├── MultiSignature.php
+│   └── SignatureResult.php
+├── Event/              # Event system
+│   ├── BaseEvent.php
+│   ├── EventDispatcher.php
+│   ├── TokenIssued.php
+│   ├── TokenExpired.php
+│   ├── TokenRefreshed.php
+│   ├── TokenRevoked.php
+│   ├── TokenBlacklisted.php
+│   └── TokenValidated.php
 ├── Exception/          # Custom exceptions
+│   ├── JwtException.php
 │   ├── TokenInvalidException.php
 │   ├── TokenExpiredException.php
-│   └── TokenBlacklistedException.php
-├── Event/              # Event system
-│   ├── TokenIssued.php
-│   └── TokenRevoked.php
+│   ├── TokenBlacklistedException.php
+│   └── TokenReplayException.php
 ├── Config/             # Configuration management
 │   └── ConfigLoader.php
+├── Enum/               # Enums
+│   ├── Algorithm.php
+│   ├── GuardMode.php
+│   └── StorageType.php
+├── Log/                # Log adapters
+├── Metrics/            # Monitoring metrics
+├── OAuth2/             # OAuth2 hybrid mode
+├── OpenId/             # OpenID Connect
+├── Support/            # Helpers
+├── Console/            # CLI commands
 └── KodeJwt.php         # Main facade/factory class
 ```
 

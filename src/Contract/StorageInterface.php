@@ -25,7 +25,7 @@ interface StorageInterface
      * @param int    $ttl 过期时间（秒），0 表示永不过期
      * @return bool 是否成功
      */
-    public function set(string $key, mixed $value, int $ttl = 3600): bool;
+    public function set(string $key, mixed $value, int $ttl = 0): bool;
 
     /**
      * 获取键值

@@ -197,6 +197,11 @@ class RedisStorage implements SsoStorageInterface
 
         $results = $pipe->exec();
 
+        // exec 在失败时返回 false，需先判空再遍历，避免对 false 执行 foreach
+        if (!is_array($results)) {
+            return false;
+        }
+
         // 检查所有操作是否成功
         foreach ($results as $result) {
             if ($result === false) {
@@ -380,7 +385,16 @@ class RedisStorage implements SsoStorageInterface
     {
         $key = $this->getKey($key);
         $ttl = $this->redis->ttl($key);
-        return is_int($ttl) && $ttl >= 0 ? $ttl : -2;
+
+        // Redis TTL 命令返回值约定：
+        //   -2 : 键不存在
+        //   -1 : 键存在但无关联过期时间（永不过期）
+        //  >=0 : 剩余秒数
+        if (!is_int($ttl)) {
+            return -2;
+        }
+
+        return $ttl === -2 ? -2 : $ttl;
     }
 
     public function clear(): bool

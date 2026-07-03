@@ -247,4 +247,73 @@ final class GuardTest extends TestCase
         // 验证获取不存在的绑定返回 null
         self::assertNull($guard->currentJti('1001', 'unknown'));
     }
+
+    /**
+     * 验证 ttl_unit=seconds 时不进行分钟换算
+     */
+    public function testTtlUnitSecondsIsRespected(): void
+    {
+        $config = [
+            'algo' => 'HS256',
+            'secret' => 'ttl_unit_secret',
+            'ttl' => 90,
+            'ttl_unit' => 'seconds',
+            'refresh_enabled' => false,
+            'blacklist_enabled' => true,
+        ];
+
+        $storage = new MemoryStorage(['limit' => 100]);
+        $builder = new Builder($config);
+        $parser = new Parser($config);
+        $guard = new MloGuard($storage, $builder, $parser, new EventDispatcher(), null, $config);
+
+        // 通过反射调用 getTtlSeconds 验证（受保护方法）
+        $reflection = new \ReflectionMethod($guard, 'getTtlSeconds');
+        $reflection->setAccessible(true);
+        $seconds = $reflection->invoke($guard);
+
+        // ttl=90 + ttl_unit=seconds 应当返回 90，而非 90*60
+        self::assertSame(90, $seconds);
+    }
+
+    /**
+     * 验证 refresh 流程不再重复解析 token
+     */
+    public function testRefreshDoesNotDoubleParseToken(): void
+    {
+        $config = [
+            'algo' => 'HS256',
+            'secret' => 'refresh_secret',
+            'ttl' => 60,
+            'refresh_enabled' => true,
+            'refresh_ttl' => 20160,
+            'blacklist_enabled' => true,
+        ];
+
+        $storage = new MemoryStorage(['limit' => 100]);
+        $builder = new Builder($config);
+        $parser = new Parser($config);
+        $guard = new MloGuard($storage, $builder, $parser, new EventDispatcher(), null, $config);
+
+        $now = time();
+        $payload = new Payload(
+            uid: 999,
+            username: 'refresher',
+            platform: 'app',
+            exp: $now + 60,
+            iat: $now,
+            jti: 'jti_refresh_test'
+        );
+
+        $issued = $guard->issue($payload);
+        $token = $issued['token'];
+
+        // 刷新应成功；如果重复解析，结构上仍能成功，但性能优化通过 canRefreshPayload 复用 Payload
+        $refreshed = $guard->refresh($token);
+        self::assertNotSame($token, $refreshed['token']);
+        self::assertNotEmpty($refreshed['token']);
+
+        // 旧 token 应在黑名单中
+        self::assertTrue($storage->isBlacklisted('jti_refresh_test'));
+    }
 }

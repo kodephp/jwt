@@ -260,6 +260,8 @@ class KeyRotationManager
     /**
      * 获取所有密钥
      *
+     * 优先使用 getMultiple 批量查询，避免 N+1 网络往返。
+     *
      * @return array<string, KeyVersion>
      */
     protected function getAllKeys(): array
@@ -268,15 +270,40 @@ class KeyRotationManager
         $keyListKey = self::STORAGE_PREFIX . 'key_list';
         $keyIds = $this->storage->get($keyListKey, []);
 
-        $keys = [];
+        if (!is_array($keyIds) || empty($keyIds)) {
+            return [];
+        }
+
+        // 区分已缓存与需批量查询的 keyId
+        $cached = [];
+        $uncached = [];
         foreach ($keyIds as $keyId) {
-            $key = $this->getKeyById($keyId);
-            if ($key !== null) {
-                $keys[$keyId] = $key;
+            $keyId = (string) $keyId;
+            if (isset($this->keyCache[$keyId])) {
+                $cached[$keyId] = $this->keyCache[$keyId];
+            } else {
+                $uncached[] = $keyId;
             }
         }
 
-        return $keys;
+        // 对未缓存的 keyId 批量查询存储
+        $fetched = [];
+        if (!empty($uncached)) {
+            $storageKeys = array_map(fn(string $id): string => $this->getStorageKey($id), $uncached);
+            $rows = $this->storage->getMultiple($storageKeys, null);
+
+            foreach ($uncached as $keyId) {
+                $storageKey = $this->getStorageKey($keyId);
+                $keyData = $rows[$storageKey] ?? null;
+                if (is_array($keyData)) {
+                    $key = KeyVersion::fromArray($keyData);
+                    $this->keyCache[$keyId] = $key;
+                    $fetched[$keyId] = $key;
+                }
+            }
+        }
+
+        return array_merge($cached, $fetched);
     }
 
     /**

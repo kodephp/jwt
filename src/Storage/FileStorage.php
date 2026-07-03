@@ -42,12 +42,21 @@ class FileStorage implements SsoStorageInterface
 
     /**
      * 获取文件路径
+     *
+     * 为避免键名碰撞（例如 "a:b" 与 "a_b" 都被清洗成 "a_b"），
+     * 同时保留可读性，将原始键名做安全清洗后，附加短哈希作为后缀。
      */
     protected function getFilePath(string $key): string
     {
-        // 清理键名，防止路径遍历
-        $cleanKey = preg_replace('/[^a-zA-Z0-9._-]/', '_', $key);
-        return $this->path . $cleanKey . $this->extension;
+        // 清洗键名，防止路径遍历，仅保留字母数字与少量安全字符
+        $cleanKey = preg_replace('/[^a-zA-Z0-9._-]/', '_', $key) ?? '';
+        // 截断过长键名，避免文件系统路径长度限制
+        if (strlen($cleanKey) > 100) {
+            $cleanKey = substr($cleanKey, 0, 100);
+        }
+        // 追加 8 字节短哈希区分碰撞键
+        $shortHash = substr(hash('sha256', $key), 0, 8);
+        return $this->path . $cleanKey . '.' . $shortHash . $this->extension;
     }
 
     /**
@@ -213,26 +222,28 @@ class FileStorage implements SsoStorageInterface
     /**
      * 清理过期项
      *
-     * @return bool
+     * @return bool|int 返回清理的记录数量；当 glob 失败时返回 false
      */
-    public function cleanExpired(): bool
+    public function cleanExpired(): bool|int
     {
-        $count = $this->cleanExpiredItems();
-        return $count >= 0;
+        return $this->cleanExpiredItems();
     }
 
     /**
      * 清理过期项（内部方法）
+     *
+     * @return int|false 返回清理的记录数量；当 glob 失败时返回 false
      */
-    private function cleanExpiredItems(): int
+    private function cleanExpiredItems(): int|false
     {
         $count = 0;
 
         // 获取目录中的所有文件
         $files = glob($this->path . '*' . $this->extension);
 
+        // glob 失败时返回 false，与"无过期项"返回 0 区分
         if ($files === false) {
-            return 0;
+            return false;
         }
 
         foreach ($files as $file) {
@@ -251,7 +262,11 @@ class FileStorage implements SsoStorageInterface
             }
 
             // 检查是否过期
-            if (is_array($data) && isset($data['expires_at']) && $data['expires_at'] > 0 && $data['expires_at'] < time()) {
+            $isExpired = is_array($data)
+                && isset($data['expires_at'])
+                && $data['expires_at'] > 0
+                && $data['expires_at'] < time();
+            if ($isExpired) {
                 // 删除过期文件
                 if (unlink($file)) {
                     $count++;

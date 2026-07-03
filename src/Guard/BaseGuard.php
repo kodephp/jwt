@@ -144,15 +144,21 @@ abstract class BaseGuard implements GuardInterface
      */
     public function refresh(string $token): array
     {
-        $oldPayload = $this->parser->parse(
-            $token,
-            $this->getExpectedPlatform(),
-            true,
-            (array) ($this->config['expected_claims'] ?? [])
-        );
+        // 一次性解析 token，避免在 canRefresh 内重复解析（包含签名验证等重计算）
+        try {
+            $oldPayload = $this->parser->parse(
+                $token,
+                $this->getExpectedPlatform(),
+                true,
+                (array) ($this->config['expected_claims'] ?? [])
+            );
+        } catch (JwtException $e) {
+            $this->logger->error('Token 刷新失败：解析异常', ['error' => $e->getMessage()]);
+            throw $e;
+        }
 
-        // 检查是否可以刷新
-        if (!$this->canRefresh($token)) {
+        // 基于已解析的 Payload 判断可刷新性，避免再次 parse
+        if (!$this->canRefreshPayload($oldPayload)) {
             throw new JwtException('Token cannot be refreshed');
         }
 
@@ -240,6 +246,8 @@ abstract class BaseGuard implements GuardInterface
 
     /**
      * 检查Token是否可以刷新
+     *
+     * 兼容外部调用：内部会重新解析 token。Guard 内部刷新流程应使用 canRefreshPayload 避免重复解析。
      */
     protected function canRefresh(string $token): bool
     {
@@ -256,19 +264,32 @@ abstract class BaseGuard implements GuardInterface
                 (array) ($this->config['expected_claims'] ?? [])
             );
 
-            // 检查是否在黑名单中
-            if ($this->storage->isBlacklisted($payload->jti)) {
-                return false;
-            }
-
-            // 计算刷新窗口期
-            $refreshWindow = $payload->exp + $this->getRefreshTtlSeconds();
-
-            // 检查是否在刷新窗口期内
-            return time() <= $refreshWindow;
+            return $this->canRefreshPayload($payload);
         } catch (TokenInvalidException) {
             return false;
         }
+    }
+
+    /**
+     * 基于已解析的 Payload 判断是否可刷新
+     *
+     * 与 canRefresh() 共享同一套规则，但跳过重复解析，供 refresh() 复用。
+     */
+    protected function canRefreshPayload(Payload $payload): bool
+    {
+        // 检查是否启用刷新
+        if (!($this->config['refresh_enabled'] ?? false)) {
+            return false;
+        }
+
+        // 检查是否在黑名单中
+        if ($this->storage->isBlacklisted($payload->jti)) {
+            return false;
+        }
+
+        // 检查是否在刷新窗口期内
+        $refreshWindow = $payload->exp + $this->getRefreshTtlSeconds();
+        return time() <= $refreshWindow;
     }
 
     protected function getExpectedPlatform(): ?string
@@ -304,16 +325,21 @@ abstract class BaseGuard implements GuardInterface
     protected function getTtlSeconds(): int
     {
         $ttl = (int) ($this->config['ttl'] ?? 1440);
-        $unit = (string) ($this->config['ttl_unit'] ?? '');
+        $unit = strtolower((string) ($this->config['ttl_unit'] ?? ''));
 
+        // 显式指定单位时按指定单位解析
         if ($unit === 'seconds') {
             return max(1, $ttl);
         }
-
         if ($unit === 'minutes') {
             return max(1, $ttl * 60);
         }
+        if ($unit === 'hours') {
+            return max(1, $ttl * 3600);
+        }
 
+        // 未指定单位时的兼容策略：小值视为分钟，大值（>2880=48 小时）视为秒。
+        // 该启发式仅为向后兼容保留，新代码建议显式配置 ttl_unit。
         if ($ttl <= 2880) {
             return max(1, $ttl * 60);
         }
@@ -324,16 +350,20 @@ abstract class BaseGuard implements GuardInterface
     protected function getRefreshTtlSeconds(): int
     {
         $refreshTtl = (int) ($this->config['refresh_ttl'] ?? 0);
-        $unit = (string) ($this->config['refresh_ttl_unit'] ?? '');
+        $unit = strtolower((string) ($this->config['refresh_ttl_unit'] ?? ''));
 
+        // 显式指定单位时按指定单位解析
         if ($unit === 'seconds') {
             return max(0, $refreshTtl);
         }
-
         if ($unit === 'minutes') {
             return max(0, $refreshTtl * 60);
         }
+        if ($unit === 'hours') {
+            return max(0, $refreshTtl * 3600);
+        }
 
+        // 未指定单位时的兼容策略：小值视为分钟，大值（>43200=30 天）视为秒
         if ($refreshTtl <= 43200) {
             return max(0, $refreshTtl * 60);
         }

@@ -482,10 +482,11 @@ class KodeJwt
      */
     public static function tokenManager(?string $guard = null): TokenManager
     {
+        // 统一使用解析后的 $guardName，避免 $guard=null 时配置读取与守卫实例使用的 guard 不一致
         $guardName = $guard ?? static::config()->get('defaults.guard', 'api');
         $guardConfig = static::config()->get("guards.{$guardName}", []);
         $storageName = (string) ($guardConfig['storage'] ?? static::config()->get('defaults.storage', 'memory'));
-        $guardInstance = static::guard($guard);
+        $guardInstance = static::guard($guardName);
 
         return new TokenManager(
             static::storage($storageName),

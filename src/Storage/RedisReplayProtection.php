@@ -126,9 +126,11 @@ class RedisReplayProtection implements ReplayProtectionInterface
         if ($windowSeconds > 0 && $this->slidingMaxRequests > 0) {
             $windowKey = $this->prefix . "replay:window:{$jti}";
             $windowMs = $windowSeconds * 1000;
+            $nowMs = (string) (int) (microtime(true) * 1000);
+            $maxReq = (string) $this->slidingMaxRequests;
             $result = $this->redis->eval(
                 self::LUA_SLIDING_WINDOW,
-                [$windowKey, (string) (int) (microtime(true) * 1000), (string) $windowMs, $nonce, (string) $this->slidingMaxRequests],
+                [$windowKey, $nowMs, (string) $windowMs, $nonce, $maxReq],
                 1
             );
             if ((int) $result !== 1) {
