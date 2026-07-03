@@ -1,8 +1,8 @@
 # Kode JWT: A Robust, Comprehensive, Modern PHP 8.3+ JWT Package
 
 > **Project Name**: `kode/jwt`
-> **Current Version**: `v1.9.0`
-> **Goal**: Provide a secure, flexible, high-performance JWT authentication solution for modern PHP applications, supporting Single Sign-On (SSO), Multi-Login, blacklist management, automatic renewal, multi-platform adaptation, Anti-Replay, JWK key management (RFC 7517), Token client fingerprint binding, and compatibility with FPM, Swoole, RoadRunner, and other runtime environments.
+> **Current Version**: `v1.10.0`
+> **Goal**: Provide a secure, flexible, high-performance JWT authentication solution for modern PHP applications, supporting Single Sign-On (SSO), Multi-Login, blacklist management, automatic renewal, multi-platform adaptation, Anti-Replay, JWK key management (RFC 7517), Token client fingerprint binding, JWKS endpoint publishing (RFC 7517 §5), Token Introspection (RFC 7662), OIDC Discovery (RFC 8414), and compatibility with FPM, Swoole, RoadRunner, and other runtime environments.
 
 ---
 
@@ -42,6 +42,11 @@ Quickly integrate using kode-related packages or other suitable general-purpose 
 | 🆕 v1.9 **Algorithm Allowlist Three-Layer Defense** | Permanently disable `none` algorithm → explicit allowlist → single algorithm strict matching, prevents algorithm confusion attacks |
 | 🆕 v1.9 **PHP 8.3 readonly class** | Core value objects like `Jwk`, `JwkSet` use `final readonly class`, immutable at runtime to prevent key tampering |
 | 🆕 v1.9 **Typed Class Constants** | Uses `private const array SUPPORTED_KTY = [...]` and other PHP 8.3 typed constants for stronger type safety |
+| 🆕 v1.10 **JWKS Endpoint Publishing (RFC 7517 §5)** | `JwksPublisher` publishes JWK Set to `jwks_uri` in standard JSON format, auto-strips private keys, supports ETag / If-None-Match conditional requests |
+| 🆕 v1.10 **Token Introspection (RFC 7662)** | `Introspector` + `IntrospectionResponse` provide standard introspection endpoint for resource servers to query Token status |
+| 🆕 v1.10 **OIDC Discovery (RFC 8414)** | `DiscoveryConfiguration` + `DiscoveryPublisher` publish authorization server metadata at `/.well-known/openid-configuration` |
+| 🆕 v1.10 **Scope Value Object & Claim Inspector** | `Scope` immutable collection (has/hasAny/hasAll/intersect/diff), `ClaimInspector` chainable validation of issuer/audience/scope/time window |
+| 🆕 v1.10 **TokenPolicy Strategy Object** | Immutable policy value object with chainable configuration (issuer/audience/platform/scope/custom), one-shot `enforce()` for Token validation |
 
 ---
 
@@ -111,8 +116,23 @@ src/
 │   └── StorageType.php
 ├── Log/                # Log adapters
 ├── Metrics/            # Monitoring metrics
-├── OAuth2/             # OAuth2 hybrid mode
+├── OAuth2/             # OAuth2 module
+│   ├── HybridProvider.php
+│   ├── HybridTokenResponse.php
+│   ├── JwksPublisher.php            # 🆕 v1.10 JWKS endpoint publisher
+│   ├── JwksResponse.php             # 🆕 v1.10 JWKS response value object
+│   ├── IntrospectionResponse.php    # 🆕 v1.10 RFC 7662 introspection response
+│   └── Introspector.php             # 🆕 v1.10 RFC 7662 introspection service
 ├── OpenId/             # OpenID Connect
+│   ├── IdTokenBuilder.php
+│   ├── UserInfo.php
+│   ├── DiscoveryConfiguration.php   # 🆕 v1.10 RFC 8414 Discovery metadata
+│   └── DiscoveryPublisher.php       # 🆕 v1.10 Discovery endpoint publisher
+├── Claim/              # 🆕 v1.10 Claim module
+│   ├── Scope.php                    # OAuth2/OIDC Scope value object
+│   └── ClaimInspector.php           # Chainable claim validator
+├── Policy/             # 🆕 v1.10 Policy module
+│   └── TokenPolicy.php              # Token validation policy value object
 ├── Support/            # Helpers
 ├── Console/            # CLI commands
 └── KodeJwt.php         # Main facade/factory class
@@ -724,14 +744,172 @@ class KodeJwt {}
 
 ---
 
+## 🆕 v1.10.0 New Features: OAuth2 / OIDC Interoperability Enhancement
+
+v1.10.0 focuses on **OAuth2 / OIDC interoperability enhancement**, adding four RFC standard modules: JWKS endpoint publishing (RFC 7517 §5), Token Introspection (RFC 7662), OIDC Discovery (RFC 8414), Scope value object and claim inspector, plus the `TokenPolicy` strategy object for unified Token validation. All new modules are **PSR-7 / PSR-15 decoupled** and adapt to any framework's HTTP layer.
+
+### 1. JWKS Endpoint Publishing (RFC 7517 §5)
+
+`JwksPublisher` publishes the local JWK Set to `jwks_uri` in standard JSON format for resource servers to fetch public keys for signature verification.
+
+```php
+use Kode\Jwt\KodeJwt;
+
+// Create JWKS publisher (public key set auto-strips private key parameters)
+$publisher = KodeJwt::jwksPublisher($jwksSet, maxAge: 3600);
+
+// Handle HTTP request (with If-None-Match header)
+$response = $publisher->handle([
+    'If-None-Match' => $_SERVER['HTTP_IF_NONE_MATCH'] ?? '',
+]);
+
+http_response_code($response->status);
+foreach ($response->headers as $name => $value) {
+    header("{$name}: {$value}");
+}
+echo $response->body;
+// Returns 304 Not Modified when conditional cache is hit
+```
+
+**Security**: `JwksPublisher` always outputs only the public JWK Set (calls `JwkSet::toPublic()` internally). ETag is a strong SHA-256 hash based on the public JWK Set JSON.
+
+### 2. Token Introspection (RFC 7662)
+
+`Introspector` provides a standard introspection endpoint for resource servers to query Token status.
+
+```php
+use Kode\Jwt\KodeJwt;
+
+$introspector = KodeJwt::introspector();
+
+$response = $introspector->introspect(
+    token: $bearerToken,
+    expectedPlatform: 'web',
+    clientId: 'client-app-001',
+);
+
+header('Content-Type: application/json');
+echo $response->toJson();
+// Valid Token: {"active":true,"scope":"openid profile","client_id":"client-app-001",...}
+// Invalid Token: {"active":false}
+```
+
+**Information side-channel defense**: All failures (malformed, signature error, expired, blacklisted, platform mismatch) uniformly return `{"active":false}`, **without leaking the failure reason** to resource servers.
+
+### 3. OIDC Discovery (RFC 8414)
+
+`DiscoveryPublisher` publishes authorization server metadata to `/.well-known/openid-configuration`.
+
+```php
+use Kode\Jwt\KodeJwt;
+
+$config = KodeJwt::discoveryConfiguration(
+    issuer: 'https://auth.example.com',
+    authorizationEndpoint: 'https://auth.example.com/authorize',
+    tokenEndpoint: 'https://auth.example.com/token',
+    jwksUri: 'https://auth.example.com/.well-known/jwks',
+);
+
+$publisher = KodeJwt::discoveryPublisher($config, maxAge: 86400);
+$response = $publisher->handle([
+    'If-None-Match' => $_SERVER['HTTP_IF_NONE_MATCH'] ?? '',
+]);
+
+http_response_code($response->status);
+foreach ($response->headers as $name => $value) {
+    header("{$name}: {$value}");
+}
+echo $response->body;
+```
+
+**Standard paths**: OIDC `/.well-known/openid-configuration`, OAuth2 `/.well-known/oauth-authorization-server`.
+
+### 4. Scope Value Object & Claim Inspector
+
+```php
+use Kode\Jwt\KodeJwt;
+
+// Scope value object (immutable collection)
+$scope = KodeJwt::scope('openid profile email');
+$scope->has('openid');                          // true
+$scope->hasAll(['openid', 'profile']);          // true
+$scope->intersect(['openid', 'email'])->toArray(); // ['openid', 'email']
+$scope->allStandard();                          // true (all OIDC standard scopes)
+
+// ClaimInspector chainable validation
+$inspector = KodeJwt::claimInspector();
+try {
+    $inspector
+        ->assertIssuer($payload, 'https://auth.example.com')
+        ->assertAudience($payload, 'web')
+        ->assertTimeWindow($payload, clockSkew: 30)
+        ->assertScopesAll($payload, ['openid', 'profile'])
+        ->assertPlatform($payload, 'web');
+} catch (\Kode\Jwt\Exception\TokenInvalidException $e) {
+    // Validation failed, $e->jti carries the Token JTI for troubleshooting
+}
+```
+
+### 5. TokenPolicy Strategy Object
+
+```php
+use Kode\Jwt\KodeJwt;
+
+// Chainable policy construction
+$policy = KodeJwt::tokenPolicy()
+    ->withIssuer('https://auth.example.com')
+    ->withAudience('web')
+    ->withPlatform('web')
+    ->withRequiredScopes(['openid', 'profile'])
+    ->withAnyScopes(['read', 'write'])
+    ->withClockSkew(30);
+
+// enforce: throws on failure
+try {
+    $policy->enforce($payload);
+} catch (\Kode\Jwt\Exception\TokenInvalidException $e) {
+    // ...
+}
+
+// satisfies: non-throwing boolean version
+if ($policy->satisfies($payload)) {
+    // Validation passed
+}
+
+// Extract allowed scope
+$allowedScope = $policy->extractAllowedScope($payload);
+```
+
+### 6. KodeJwt Facade Convenience Methods
+
+| Method | Purpose |
+|--------|---------|
+| `KodeJwt::jwksPublisher(JwkSet, maxAge)` | Create JWKS endpoint publisher |
+| `KodeJwt::introspector(guard)` | Create Introspector |
+| `KodeJwt::introspect(token, platform, clientId, guard)` | Convenient introspection |
+| `KodeJwt::discoveryConfiguration(issuer, ...)` | Create Discovery configuration |
+| `KodeJwt::discoveryPublisher(config, maxAge)` | Create Discovery endpoint publisher |
+| `KodeJwt::tokenPolicy()` | Create empty Token policy |
+| `KodeJwt::claimInspector()` | Create Claim inspector |
+| `KodeJwt::scope(string)` | Create Scope value object from string |
+
+### 7. Testing & Quality
+
+- Test suite: 246 tests / 610 assertions
+- New tests: `JwksEndpointTest` (18) / `IntrospectionTest` (16) / `DiscoveryTest` (18) / `ScopeTest` (11) / `ClaimInspectorTest` (22) / `TokenPolicyTest` (19)
+- PHPCS: 0 errors / 0 warnings
+- PHPStan: level 7+
+
+---
+
 ## 📈 Future Plans
 
 - [ ] Support JWT multi-signature (Detached Signature)
-- [ ] Integrate OpenID Connect support
+- [x] Integrate OpenID Connect support (Completed in v1.10.0 - Discovery / Introspection / JWKS)
 - [x] Provide CLI tool for Token management, key pair generation (Completed)
-- [ ] Support JWT and OAuth2 hybrid mode
-- [ ] Provide Prometheus monitoring metrics (Token count, refresh frequency, etc.)
-- [ ] Implement JWT key rotation mechanism, supporting smooth transition
+- [x] Support JWT and OAuth2 hybrid mode (Completed)
+- [x] Provide Prometheus monitoring metrics (Completed)
+- [x] Implement JWT key rotation mechanism (Completed in v1.9.0 via JwkSet)
 
 ---
 

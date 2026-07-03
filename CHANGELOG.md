@@ -7,6 +7,104 @@
 
 ---
 
+## [1.10.0] - 2026-07-04
+
+### 总结
+
+本次发版聚焦 **OAuth2 / OIDC 互操作能力增强**，新增四个 RFC 标准模块：JWKS 端点发布（RFC 7517 §5）、Token Introspection（RFC 7662）、OIDC Discovery（RFC 8414）、Scope 值对象与声明检查器。同时引入 `TokenPolicy` 策略对象统一管理 Token 校验逻辑，并在 `KodeJwt` 门面层暴露 `introspect / jwks / discovery / tokenPolicy / claimInspector / scope` 便捷方法。测试套件扩展至 246 个测试 / 610 个断言。
+
+### Added — 新增功能
+
+- **JWKS 端点发布模块**（`src/OAuth2/JwksPublisher.php` + `JwksResponse.php`）
+  - `JwksPublisher`：将本地 JWK Set 以 RFC 7517 §5 标准 JSON 格式发布到 `jwks_uri`
+  - 自动调用 `JwkSet::toPublic()` 剥离私钥参数，杜绝私钥泄露
+  - 提供强 ETag（基于公开 JWK Set JSON 的 sha256）与 `Cache-Control` 头
+  - 支持 `If-None-Match` 协商缓存（304 Not Modified），含弱 ETag 与通配符 `*` 匹配
+  - `JwksResponse`：与 PSR-7 / PSR-15 解耦的响应值对象（status / headers / body）
+- **Token Introspection 模块**（`src/OAuth2/IntrospectionResponse.php` + `Introspector.php`）
+  - `IntrospectionResponse`：RFC 7662 §2.2 响应值对象，`final readonly class`
+    - 包含全部标准字段：active / scope / client_id / username / token_type / exp / iat / nbf / sub / aud / iss / jti
+    - `fromPayload()` 工厂：从 `Payload` 构造 active=true 响应
+    - `inactive()` 工厂：构造 active=false 响应（仅 `{"active":false}`）
+    - 实现 `Arrayable` / `Jsonable` 双向序列化
+  - `Introspector`：内省服务
+    - `introspect(token)` 自动完成解析验签 + 黑名单检查
+    - 任何异常（格式错误、签名错误、过期、黑名单）统一返回 `active=false`，不泄露失败原因
+    - 支持 `fromPayload()`：基于已校验 Payload 直接构造响应
+- **OIDC Discovery 模块**（`src/OpenId/DiscoveryConfiguration.php` + `DiscoveryPublisher.php`）
+  - `DiscoveryConfiguration`：RFC 8414 元数据值对象
+    - 必填字段：issuer / authorization_endpoint / token_endpoint / jwks_uri
+    - 可选字段：userinfo_endpoint / introspection_endpoint / revocation_endpoint / end_session_endpoint
+    - 默认值：scopes_supported / response_types_supported / grant_types_supported / subject_types_supported / id_token_signing_alg_values_supported / claims_supported
+    - 支持 `extra` 字段扩展（如 require_auth_time、code_challenge_methods_supported）
+  - `DiscoveryPublisher`：Discovery 端点发布器
+    - 标准 OIDC 路径：`/.well-known/openid-configuration`
+    - 标准 OAuth2 路径：`/.well-known/oauth-authorization-server`
+    - 同样支持 ETag / If-None-Match 协商缓存
+- **Scope 值对象**（`src/Claim/Scope.php`）
+  - 不可变集合语义（`final readonly class`），实现 `Arrayable` / `Jsonable` / `\Countable`
+  - 多种工厂：`fromString()`（空格分隔）/ `fromArray()` / `fromJson()`
+  - 集合运算：`has()` / `hasAny()` / `hasAll()` / `intersect()` / `diff()` / `merge()`
+  - 校验：`allAllowed()` / `allStandard()`（OIDC 标准 scope 检查）
+  - 字符合法性校验：拒绝控制字符与重复 scope（去重）
+  - 支持 `__toString()` 魔法方法，方便直接嵌入 Token
+- **Claim 声明检查器**（`src/Claim/ClaimInspector.php`）
+  - 纯无状态服务，统一处理声明校验逻辑
+  - 校验项：`assertIssuer` / `assertAudience` / `assertSubject` / `assertTimeWindow` / `assertScopesAll` / `assertScopesAny` / `assertCustomEquals` / `assertPlatform`
+  - 时间窗口含 `exp` / `nbf` / `iat` 校验，支持时钟漂移容忍
+  - 全部失败抛出 `TokenInvalidException`，携带 `jti` 便于排查
+  - 链式调用：`$inspector->assertIssuer(...)->assertAudience(...)->assertScopesAll(...)`
+- **TokenPolicy 策略对象**（`src/Policy/TokenPolicy.php`）
+  - 不可变值对象（`final readonly class`），承载完整 Token 校验策略
+  - 链式 with* 方法：`withIssuer` / `withAudience` / `withPlatform` / `withRequiredScopes` / `withAnyScopes` / `withRequiredCustom` / `withClockSkew` / `withIgnoreExpiration`
+  - `enforce(Payload)` 一次性执行全部策略，失败抛异常
+  - `satisfies(Payload)` 不抛异常的判定版本
+  - `extractAllowedScope(Payload)` 提取命中 scope 集合
+  - `fromArray()` / `toArray()` 序列化支持
+- **KodeJwt 门面新增便捷方法**
+  - `KodeJwt::jwksPublisher(JwkSet, maxAge)`：创建 JWKS 端点发布器
+  - `KodeJwt::introspector(guard)`：创建 Introspector
+  - `KodeJwt::introspect(token, expectedPlatform, clientId, guard)`：便捷内省
+  - `KodeJwt::discoveryConfiguration(issuer, ...)`：创建 Discovery 配置
+  - `KodeJwt::discoveryPublisher(config, maxAge)`：创建 Discovery 端点发布器
+  - `KodeJwt::tokenPolicy()`：创建空 Token 策略
+  - `KodeJwt::claimInspector()`：创建 Claim 检查器
+  - `KodeJwt::scope(string)`：从字符串创建 Scope 值对象
+- **测试套件扩充**
+  - `tests/JwksEndpointTest.php`：18 个测试，覆盖 JSON 输出 / ETag 稳定性 / Cache-Control / 304 协商缓存 / 弱 ETag / 通配符
+  - `tests/IntrospectionTest.php`：16 个测试，覆盖 active/inactive 响应 / Introspector 有效/无效/过期/黑名单/平台不匹配/签名错误
+  - `tests/DiscoveryTest.php`：18 个测试，覆盖必填字段 / 可选字段 / extra / fromArray / fromJson / Publisher 协商缓存
+  - `tests/ScopeTest.php`：11 个测试，覆盖 fromString / fromArray / has / 集合运算 / 白名单 / JSON
+  - `tests/ClaimInspectorTest.php`：22 个测试，覆盖 issuer / audience / subject / 时间窗口 / scope / custom / platform / 链式
+  - `tests/TokenPolicyTest.php`：19 个测试，覆盖链式构造 / enforce / satisfies / extractAllowedScope / toArray / fromArray
+
+### Changed — 变更
+
+- **composer.json**：`version` 从 `1.9.0` 升至 `1.10.0`
+- **composer.json**：新增 keywords `jwks`、`openid`、`openid-connect`、`introspection`、`discovery`
+- **`KodeJwt` 门面扩展**：新增 8 个便捷方法，覆盖 JWKS / Introspection / Discovery / Policy / Scope
+
+### Fixed — 修复
+
+无新增修复（v1.9.0 已修复全部已知 P0/P1 缺陷）。
+
+### Security — 安全
+
+- **Introspector 信息侧通道防御**：任何失败统一返回 `active=false`，不向资源服务器泄露失败原因
+- **JWKS 端点私钥隔离**：`JwksPublisher` 永远只输出公开 JWK Set
+- **Scope 字符合法性校验**：拒绝控制字符与非法字符，避免 scope 注入
+- **ClaimInspector 常量时间比较**：issuer / platform / subject 使用 `hash_equals` 防止时序攻击
+
+### Deprecations — 弃用
+
+无新增弃用项。
+
+### Breaking Changes — 不兼容变更
+
+无新增不兼容变更（v1.10.0 为向下兼容的功能增强版本）。
+
+---
+
 ## [1.9.0] - 2026-07-04
 
 ### 总结
@@ -165,6 +263,7 @@
 
 ---
 
+[1.10.0]: https://github.com/kode-php/jwt/releases/tag/v1.10.0
 [1.9.0]: https://github.com/kode-php/jwt/releases/tag/v1.9.0
 [1.8.2]: https://github.com/kode-php/jwt/releases/tag/v1.8.2
 [1.8.1]: https://github.com/kode-php/jwt/releases/tag/v1.8.1

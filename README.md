@@ -1,8 +1,8 @@
 # Kode JWT：一个健壮、全面、现代化的 PHP 8.3+ JWT 包
 
 > **项目名称**：`kode/jwt`  
-> **当前版本**：`v1.9.0`  
-> **目标**：为现代 PHP 应用提供安全、灵活、高性能的 JWT 身份验证解决方案，支持单点登录（SSO）、多点登录、黑名单管理、自动续期、多平台适配、防重放攻击（Anti-Replay）、JWK 密钥管理、Token 客户端指纹绑定，兼容 FPM、Swoole、RoadRunner 等运行环境。
+> **当前版本**：`v1.10.0`  
+> **目标**：为现代 PHP 应用提供安全、灵活、高性能的 JWT 身份验证解决方案，支持单点登录（SSO）、多点登录、黑名单管理、自动续期、多平台适配、防重放攻击（Anti-Replay）、JWK 密钥管理、Token 客户端指纹绑定、JWKS 端点发布、Token Introspection、OIDC Discovery，兼容 FPM、Swoole、RoadRunner 等运行环境。
 
 ---
 
@@ -41,6 +41,11 @@
 | 🆕 v1.9 **算法白名单强制校验** | 三层防御：永久禁用 `none` 算法 → 显式白名单 → 单算法严格匹配，杜绝算法混淆攻击 |
 | 🆕 v1.9 **PHP 8.3 readonly class** | `Jwk`、`JwkSet` 等核心值对象使用 `final readonly class`，运行期不可变，防止密钥被篡改 |
 | 🆕 v1.9 **类型化类常量** | 使用 `private const array SUPPORTED_KTY = [...]` 等 PHP 8.3 类型化常量，强化类型安全 |
+| 🆕 v1.10 **JWKS 端点发布（RFC 7517 §5）** | `JwksPublisher` 将 JWK Set 以标准 JSON 格式发布到 `jwks_uri`，自动剥离私钥，支持 ETag / If-None-Match 协商缓存 |
+| 🆕 v1.10 **Token Introspection（RFC 7662）** | `Introspector` + `IntrospectionResponse` 提供标准 introspection 端点，资源服务器可查询 Token 当前状态 |
+| 🆕 v1.10 **OIDC Discovery（RFC 8414）** | `DiscoveryConfiguration` + `DiscoveryPublisher` 发布授权服务器元数据，支持 `/.well-known/openid-configuration` |
+| 🆕 v1.10 **Scope 值对象与声明检查器** | `Scope` 不可变集合（has/hasAny/hasAll/intersect/diff），`ClaimInspector` 链式校验 issuer/audience/scope/time window |
+| 🆕 v1.10 **TokenPolicy 策略对象** | 不可变策略值对象，链式配置（issuer/audience/platform/scope/custom），一次性 `enforce()` 完成 Token 校验 |
 
 ---
 
@@ -123,12 +128,23 @@ src/
 │   └── LoggerFactory.php
 ├── Metrics/            # 监控指标
 │   └── PrometheusMetrics.php
-├── OAuth2/             # OAuth2 混合模式
+├── OAuth2/             # OAuth2 模块
 │   ├── HybridProvider.php
-│   └── HybridTokenResponse.php
+│   ├── HybridTokenResponse.php
+│   ├── JwksPublisher.php            # 🆕 v1.10 JWKS 端点发布器
+│   ├── JwksResponse.php             # 🆕 v1.10 JWKS 响应值对象
+│   ├── IntrospectionResponse.php    # 🆕 v1.10 RFC 7662 内省响应
+│   └── Introspector.php             # 🆕 v1.10 RFC 7662 内省服务
 ├── OpenId/             # OpenID Connect
 │   ├── IdTokenBuilder.php
-│   └── UserInfo.php
+│   ├── UserInfo.php
+│   ├── DiscoveryConfiguration.php   # 🆕 v1.10 RFC 8414 Discovery 元数据
+│   └── DiscoveryPublisher.php       # 🆕 v1.10 Discovery 端点发布器
+├── Claim/              # 🆕 v1.10 声明模块
+│   ├── Scope.php                    # OAuth2/OIDC Scope 值对象
+│   └── ClaimInspector.php           # 链式声明校验器
+├── Policy/             # 🆕 v1.10 策略模块
+│   └── TokenPolicy.php              # Token 校验策略值对象
 ├── Support/            # 辅助工具
 │   ├── ImmutableDto.php
 │   └── PhpFeature.php
@@ -811,7 +827,7 @@ $payload = Payload::create(
 
 ---
 
-## 🚀 快速开始（v1.9.x）
+## 🚀 快速开始（v1.10.x）
 
 ### 1. 最小化示例
 
@@ -941,6 +957,241 @@ try {
 > - `examples/basic_usage.php` — 基础 + expected_claims 校验
 > - `examples/storage_usage.php` — 多存储 + SsoStorageInterface 增强
 > - `examples/advanced_usage.php` — 标准声明 + Nonce + 多签
+
+---
+
+## 🆕 v1.10.0 新特性：OAuth2 / OIDC 互操作能力增强
+
+v1.10.0 聚焦 **OAuth2 / OIDC 互操作能力增强**，新增四个 RFC 标准模块：JWKS 端点发布（RFC 7517 §5）、Token Introspection（RFC 7662）、OIDC Discovery（RFC 8414）、Scope 值对象与声明检查器，并引入 `TokenPolicy` 策略对象统一管理 Token 校验逻辑。所有新模块均为 **PSR-7 / PSR-15 解耦**设计，可适配任意框架的 HTTP 层。
+
+### 1. JWKS 端点发布（RFC 7517 §5）
+
+`JwksPublisher` 将本地 JWK Set 以标准 JSON 格式发布到 `jwks_uri`，供资源服务器拉取公钥验签。
+
+| 类 | 说明 |
+|------|------|
+| `Kode\Jwt\OAuth2\JwksPublisher` | JWKS 端点发布器，自动剥离私钥，支持 ETag / If-None-Match |
+| `Kode\Jwt\OAuth2\JwksResponse` | 与 PSR-7 解耦的响应值对象（status / headers / body） |
+
+#### 1.1 发布公开 JWK Set
+
+```php
+use Kode\Jwt\KodeJwt;
+use Kode\Jwt\Key\JwkFactory;
+
+// 1. 生成 RSA 密钥对（私钥用于签发，公钥用于发布）
+$keyPair = JwkFactory::generateRsaKeyPair(2048, 'kid-2026-01');
+
+// 2. 创建 JWKS 发布器（公钥集合自动剥离私钥参数）
+$jwksSet = $keyPair['public']->toJwkSet(); // 假设已包装为 JwkSet
+$publisher = KodeJwt::jwksPublisher($jwksSet, maxAge: 3600);
+
+// 3. 处理 HTTP 请求（传入 If-None-Match 头）
+$response = $publisher->handle([
+    'If-None-Match' => $_SERVER['HTTP_IF_NONE_MATCH'] ?? '',
+]);
+
+// 4. 输出响应（适配你框架的 Response 对象）
+http_response_code($response->status);
+foreach ($response->headers as $name => $value) {
+    header("{$name}: {$value}");
+}
+echo $response->body;
+// 命中协商缓存时返回 304 Not Modified，body 为空
+```
+
+**安全设计**：
+- `JwksPublisher` 内部调用 `JwkSet::toPublic()`，**永远只输出公开 JWK Set**
+- ETag 基于公开 JWK Set JSON 的 sha256 强哈希，杜绝密钥内容被推断
+- `Cache-Control: public, max-age=3600` 允许 CDN 缓存但不允许浏览器存储
+
+### 2. Token Introspection（RFC 7662）
+
+`Introspector` 提供标准 introspection 端点，资源服务器可通过它查询 Token 当前状态。
+
+| 类 | 说明 |
+|------|------|
+| `Kode\Jwt\OAuth2\IntrospectionResponse` | RFC 7662 §2.2 响应值对象，`final readonly class` |
+| `Kode\Jwt\OAuth2\Introspector` | 内省服务，自动完成解析验签 + 黑名单检查 |
+
+#### 2.1 内省 Token
+
+```php
+use Kode\Jwt\KodeJwt;
+
+// 1. 创建 Introspector（使用默认守卫）
+$introspector = KodeJwt::introspector();
+
+// 2. 内省 Token（自动完成验签 + 黑名单检查）
+$response = $introspector->introspect(
+    token: $bearerToken,
+    expectedPlatform: 'web',
+    clientId: 'client-app-001',
+);
+
+// 3. 输出 RFC 7662 标准响应
+header('Content-Type: application/json');
+echo $response->toJson();
+// 有效 Token：{"active":true,"scope":"openid profile","client_id":"client-app-001","username":"alice","token_type":"Bearer","exp":1800000000,"iat":1700000000,"sub":"user-123","aud":"web","iss":"kode","jti":"..."}
+// 无效 Token：{"active":false}
+```
+
+**信息侧通道防御**：任何失败（格式错误、签名错误、过期、黑名单、平台不匹配）统一返回 `{"active":false}`，**不向资源服务器泄露失败原因**，避免攻击者通过 introspection 响应探测系统状态。
+
+### 3. OIDC Discovery（RFC 8414）
+
+`DiscoveryPublisher` 发布授权服务器元数据到 `/.well-known/openid-configuration`。
+
+| 类 | 说明 |
+|------|------|
+| `Kode\Jwt\OpenId\DiscoveryConfiguration` | RFC 8414 元数据值对象，`final readonly class` |
+| `Kode\Jwt\OpenId\DiscoveryPublisher` | Discovery 端点发布器，支持 ETag 协商缓存 |
+
+#### 3.1 发布 Discovery 文档
+
+```php
+use Kode\Jwt\KodeJwt;
+
+// 1. 创建 Discovery 配置
+$config = KodeJwt::discoveryConfiguration(
+    issuer: 'https://auth.example.com',
+    authorizationEndpoint: 'https://auth.example.com/authorize',
+    tokenEndpoint: 'https://auth.example.com/token',
+    jwksUri: 'https://auth.example.com/.well-known/jwks',
+    userinfoEndpoint: 'https://auth.example.com/userinfo',
+    introspectionEndpoint: 'https://auth.example.com/introspect',
+    revocationEndpoint: 'https://auth.example.com/revoke',
+);
+
+// 2. 创建发布器并处理请求
+$publisher = KodeJwt::discoveryPublisher($config, maxAge: 86400);
+$response = $publisher->handle([
+    'If-None-Match' => $_SERVER['HTTP_IF_NONE_MATCH'] ?? '',
+]);
+
+http_response_code($response->status);
+foreach ($response->headers as $name => $value) {
+    header("{$name}: {$value}");
+}
+echo $response->body;
+```
+
+**标准路径**：
+- OIDC：`/.well-known/openid-configuration`
+- OAuth2：`/.well-known/oauth-authorization-server`
+
+### 4. Scope 值对象（RFC 6749 §3.3）
+
+`Scope` 提供不可变集合语义，统一处理 OAuth2 / OIDC scope 的解析、校验、集合运算。
+
+```php
+use Kode\Jwt\KodeJwt;
+
+// 1. 从 Token 中的 scope 字符串构造
+$scope = KodeJwt::scope('openid profile email');
+
+// 2. 集合运算
+$scope->has('openid');              // true
+$scope->hasAny(['profile', 'phone']); // true
+$scope->hasAll(['openid', 'phone']); // false
+$scope->intersect(['openid', 'email'])->toArray(); // ['openid', 'email']
+$scope->merge(['offline_access'])->toString();     // "openid profile email offline_access"
+
+// 3. 校验
+$scope->allAllowed(['openid', 'profile', 'email', 'address']); // true
+$scope->allStandard();  // true（全部为 OIDC 标准 scope）
+
+// 4. 嵌入 Token
+$scope->__toString(); // "openid profile email"（可直接作为 Payload.scope）
+```
+
+### 5. ClaimInspector 链式声明校验器
+
+`ClaimInspector` 是无状态服务，提供链式 API 校验 Payload 声明。
+
+```php
+use Kode\Jwt\KodeJwt;
+use Kode\Jwt\Exception\TokenInvalidException;
+
+$inspector = KodeJwt::claimInspector();
+
+try {
+    $inspector
+        ->assertIssuer($payload, 'https://auth.example.com')
+        ->assertAudience($payload, 'web')
+        ->assertSubject($payload, 'user-123')
+        ->assertTimeWindow($payload, clockSkew: 30)
+        ->assertScopesAll($payload, ['openid', 'profile'])
+        ->assertPlatform($payload, 'web')
+        ->assertCustomEquals($payload, 'tenant', 'acme');
+    // 全部通过
+} catch (TokenInvalidException $e) {
+    // 校验失败，$e->jti 携带 Token JTI 便于排查
+    error_log("Token 校验失败：{$e->getMessage()} (jti={$e->jti})");
+}
+```
+
+**常量时间比较**：`assertIssuer` / `assertPlatform` / `assertSubject` 内部使用 `hash_equals`，防止时序攻击。
+
+### 6. TokenPolicy 策略对象
+
+`TokenPolicy` 是不可变值对象，承载完整 Token 校验策略，链式 `with*` 方法返回新实例。
+
+```php
+use Kode\Jwt\KodeJwt;
+
+// 1. 链式构建策略
+$policy = KodeJwt::tokenPolicy()
+    ->withIssuer('https://auth.example.com')
+    ->withAudience('web')
+    ->withPlatform('web')
+    ->withRequiredScopes(['openid', 'profile'])
+    ->withAnyScopes(['read', 'write'])    // 至少满足一个
+    ->withRequiredCustom(['tenant' => 'acme'])
+    ->withClockSkew(30)
+    ->withIgnoreExpiration(false);
+
+// 2. enforce：失败抛异常
+try {
+    $policy->enforce($payload);
+} catch (\Kode\Jwt\Exception\TokenInvalidException $e) {
+    // ...
+}
+
+// 3. satisfies：不抛异常的判定版本
+if ($policy->satisfies($payload)) {
+    // 校验通过
+}
+
+// 4. 提取命中 scope
+$allowedScope = $policy->extractAllowedScope($payload);
+
+// 5. 序列化（用于配置缓存）
+$array = $policy->toArray();
+$policy2 = \Kode\Jwt\Policy\TokenPolicy::fromArray($array);
+```
+
+### 7. KodeJwt 门面便捷方法
+
+v1.10.0 在 `KodeJwt` 门面层新增 8 个便捷方法：
+
+| 方法 | 用途 |
+|------|------|
+| `KodeJwt::jwksPublisher(JwkSet, maxAge)` | 创建 JWKS 端点发布器 |
+| `KodeJwt::introspector(guard)` | 创建 Introspector |
+| `KodeJwt::introspect(token, platform, clientId, guard)` | 便捷内省 |
+| `KodeJwt::discoveryConfiguration(issuer, ...)` | 创建 Discovery 配置 |
+| `KodeJwt::discoveryPublisher(config, maxAge)` | 创建 Discovery 端点发布器 |
+| `KodeJwt::tokenPolicy()` | 创建空 Token 策略 |
+| `KodeJwt::claimInspector()` | 创建 Claim 检查器 |
+| `KodeJwt::scope(string)` | 从字符串创建 Scope 值对象 |
+
+### 8. 测试与质量
+
+- 测试套件：246 个测试 / 610 个断言
+- 新增测试：`JwksEndpointTest` (18) / `IntrospectionTest` (16) / `DiscoveryTest` (18) / `ScopeTest` (11) / `ClaimInspectorTest` (22) / `TokenPolicyTest` (19)
+- PHPCS：0 错误 / 0 警告
+- PHPStan：level 7+
 
 ---
 

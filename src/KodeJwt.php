@@ -4,14 +4,23 @@ declare(strict_types=1);
 
 namespace Kode\Jwt;
 
+use Kode\Jwt\Claim\ClaimInspector;
+use Kode\Jwt\Claim\Scope;
 use Kode\Jwt\Config\ConfigLoader;
 use Kode\Jwt\Contract\StorageInterface;
 use Kode\Jwt\Contract\GuardInterface;
 use Kode\Jwt\Contract\LoggerInterface;
 use Kode\Jwt\Guard\SsoGuard;
 use Kode\Jwt\Guard\MloGuard;
+use Kode\Jwt\Key\JwkSet;
 use Kode\Jwt\Log\LoggerFactory;
 use Kode\Jwt\Log\NullLogger;
+use Kode\Jwt\OAuth2\IntrospectionResponse;
+use Kode\Jwt\OAuth2\Introspector;
+use Kode\Jwt\OAuth2\JwksPublisher;
+use Kode\Jwt\OpenId\DiscoveryConfiguration;
+use Kode\Jwt\OpenId\DiscoveryPublisher;
+use Kode\Jwt\Policy\TokenPolicy;
 use Kode\Jwt\Security\AntiReplay;
 use Kode\Jwt\Storage\StorageFactory;
 use Kode\Jwt\Token\Builder;
@@ -525,6 +534,132 @@ class KodeJwt
     public static function getTokenInfo(string $token, ?string $guard = null): ?array
     {
         return static::tokenManager($guard)->getTokenInfo($token);
+    }
+
+    /**
+     * 创建 JWKS 端点发布器
+     *
+     * 用于 OAuth2 资源服务器 / OIDC 依赖方通过 jwks_uri 拉取验签公钥。
+     *
+     * @param JwkSet $jwkSet 待发布的 JWK Set（可包含私钥，发布时自动剥离）
+     * @param int $maxAge Cache-Control max-age（秒），默认 3600
+     * @return JwksPublisher
+     */
+    public static function jwksPublisher(JwkSet $jwkSet, int $maxAge = 3600): JwksPublisher
+    {
+        return new JwksPublisher($jwkSet, $maxAge);
+    }
+
+    /**
+     * 创建 Token Introspector（RFC 7662）
+     *
+     * 用于资源服务器查询 Token 当前状态。默认使用配置中的默认 guard 的
+     * Parser 与 Storage 实例。
+     *
+     * @param string|null $guard 守卫名称，传 null 使用默认守卫
+     * @return Introspector
+     */
+    public static function introspector(?string $guard = null): Introspector
+    {
+        $guardName = $guard ?? static::config()->get('defaults.guard', 'api');
+        $guardConfig = static::config()->get("guards.{$guardName}", []);
+        $storageName = (string) ($guardConfig['storage']
+            ?? static::config()->get('defaults.storage', 'memory'));
+
+        return new Introspector(
+            static::parser(),
+            static::storage($storageName),
+            static::logger()
+        );
+    }
+
+    /**
+     * 内省 Token 当前状态（便捷方法）
+     *
+     * @param string $token 待查询的 Token
+     * @param string|null $expectedPlatform 期望的平台标识
+     * @param string|null $clientId 资源方客户端 ID
+     * @param string|null $guard 守卫名称
+     * @return IntrospectionResponse
+     */
+    public static function introspect(
+        string $token,
+        ?string $expectedPlatform = null,
+        ?string $clientId = null,
+        ?string $guard = null,
+    ): IntrospectionResponse {
+        return static::introspector($guard)->introspect($token, $expectedPlatform, $clientId);
+    }
+
+    /**
+     * 创建 OIDC Discovery 配置
+     *
+     * @param string $issuer 签发者标识
+     * @param string $authorizationEndpoint 授权端点
+     * @param string $tokenEndpoint Token 端点
+     * @param string $jwksUri JWKS 公钥端点
+     * @param array<string, mixed> $extra 额外字段
+     * @return DiscoveryConfiguration
+     */
+    public static function discoveryConfiguration(
+        string $issuer,
+        string $authorizationEndpoint,
+        string $tokenEndpoint,
+        string $jwksUri,
+        array $extra = [],
+    ): DiscoveryConfiguration {
+        return new DiscoveryConfiguration(
+            issuer: $issuer,
+            authorizationEndpoint: $authorizationEndpoint,
+            tokenEndpoint: $tokenEndpoint,
+            jwksUri: $jwksUri,
+            extra: $extra,
+        );
+    }
+
+    /**
+     * 创建 OIDC Discovery 端点发布器
+     *
+     * @param DiscoveryConfiguration $configuration Discovery 元数据
+     * @param int $maxAge Cache-Control max-age（秒）
+     * @return DiscoveryPublisher
+     */
+    public static function discoveryPublisher(
+        DiscoveryConfiguration $configuration,
+        int $maxAge = 3600,
+    ): DiscoveryPublisher {
+        return new DiscoveryPublisher($configuration, $maxAge);
+    }
+
+    /**
+     * 创建空 Token 策略
+     *
+     * @return TokenPolicy
+     */
+    public static function tokenPolicy(): TokenPolicy
+    {
+        return TokenPolicy::create();
+    }
+
+    /**
+     * 创建 Claim 检查器
+     *
+     * @return ClaimInspector
+     */
+    public static function claimInspector(): ClaimInspector
+    {
+        return new ClaimInspector();
+    }
+
+    /**
+     * 从空格分隔字符串创建 Scope 值对象
+     *
+     * @param string $scopeString
+     * @return Scope
+     */
+    public static function scope(string $scopeString): Scope
+    {
+        return Scope::fromString($scopeString);
     }
 
     /**
