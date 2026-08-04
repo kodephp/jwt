@@ -36,6 +36,11 @@ final readonly class Jwk implements Arrayable, Jsonable, Stringable
     private const array EC_PRIVATE_PARAMS = ['d'];
 
     /**
+     * OKP（Ed25519/X25519）私钥参数名
+     */
+    private const array OKP_PRIVATE_PARAMS = ['d'];
+
+    /**
      * oct 对称密钥参数名
      */
     private const array OCT_PRIVATE_PARAMS = ['k'];
@@ -43,7 +48,19 @@ final readonly class Jwk implements Arrayable, Jsonable, Stringable
     /**
      * 支持的密钥类型
      */
-    private const array SUPPORTED_KTY = ['RSA', 'EC', 'oct'];
+    private const array SUPPORTED_KTY = ['RSA', 'EC', 'OKP', 'oct'];
+
+    /**
+     * RFC 7638 §3.2 规定的指纹必需成员（按字典序）
+     *
+     * 计算指纹时只允许包含这些成员，且必须按字典序排列、无空白字符。
+     */
+    private const array THUMBPRINT_MEMBERS = [
+        'RSA' => ['e', 'kty', 'n'],
+        'EC' => ['crv', 'kty', 'x', 'y'],
+        'OKP' => ['crv', 'kty', 'x'],
+        'oct' => ['k', 'kty'],
+    ];
 
 
     /**
@@ -225,6 +242,7 @@ final readonly class Jwk implements Arrayable, Jsonable, Stringable
         $privateParams = match ($this->kty) {
             'RSA' => self::RSA_PRIVATE_PARAMS,
             'EC' => self::EC_PRIVATE_PARAMS,
+            'OKP' => self::OKP_PRIVATE_PARAMS,
             'oct' => self::OCT_PRIVATE_PARAMS,
             default => [],
         };
@@ -255,6 +273,7 @@ final readonly class Jwk implements Arrayable, Jsonable, Stringable
         $privateParams = match ($this->kty) {
             'RSA' => self::RSA_PRIVATE_PARAMS,
             'EC' => self::EC_PRIVATE_PARAMS,
+            'OKP' => self::OKP_PRIVATE_PARAMS,
             'oct' => self::OCT_PRIVATE_PARAMS,
             default => [],
         };
@@ -284,7 +303,7 @@ final readonly class Jwk implements Arrayable, Jsonable, Stringable
      */
     public function isAsymmetric(): bool
     {
-        return $this->kty === 'RSA' || $this->kty === 'EC';
+        return $this->kty === 'RSA' || $this->kty === 'EC' || $this->kty === 'OKP';
     }
 
     /**
@@ -352,6 +371,112 @@ final readonly class Jwk implements Arrayable, Jsonable, Stringable
         $public = $this->toPublic();
         $canonical = json_encode($public->toArray(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         return substr(hash('sha256', (string) $canonical), 0, 16);
+    }
+
+    /**
+     * 计算 JWK 指纹（RFC 7638）
+     *
+     * 与 computeKid() 的区别：指纹严格遵循 RFC 7638 的规范化规则，
+     * 只取该密钥类型的必需成员、按字典序排列、无空白字符，
+     * 因此跨语言、跨实现的计算结果完全一致，可直接用于：
+     *  - DPoP 的 `jkt` 确认声明（RFC 9449）
+     *  - 标准化的 kid 生成
+     *  - 密钥去重与比对
+     *
+     * @param string $hash 摘要算法（sha256 / sha384 / sha512）
+     * @return string base64url 编码的指纹
+     * @throws JwtException 当缺少必需成员或摘要算法不支持时
+     */
+    public function thumbprint(string $hash = 'sha256'): string
+    {
+        if (!in_array($hash, ['sha256', 'sha384', 'sha512'], true)) {
+            throw new JwtException("Unsupported thumbprint hash algorithm: {$hash}");
+        }
+
+        return self::base64UrlEncode(hash($hash, $this->canonicalThumbprintJson(), true));
+    }
+
+    /**
+     * 计算 JWK 指纹 URI（RFC 9278）
+     *
+     * 形如 `urn:ietf:params:oauth:jwk-thumbprint:sha-256:NzbLsXh8...`
+     *
+     * @param string $hash 摘要算法
+     * @return string
+     * @throws JwtException
+     */
+    public function thumbprintUri(string $hash = 'sha256'): string
+    {
+        $label = match ($hash) {
+            'sha256' => 'sha-256',
+            'sha384' => 'sha-384',
+            'sha512' => 'sha-512',
+            default => throw new JwtException("Unsupported thumbprint hash algorithm: {$hash}"),
+        };
+
+        return 'urn:ietf:params:oauth:jwk-thumbprint:' . $label . ':' . $this->thumbprint($hash);
+    }
+
+    /**
+     * 生成 RFC 7638 规范化 JSON（指纹计算输入）
+     *
+     * @return string
+     * @throws JwtException 当密钥缺少必需成员时
+     */
+    public function canonicalThumbprintJson(): string
+    {
+        $members = self::THUMBPRINT_MEMBERS[$this->kty] ?? null;
+        if ($members === null) {
+            throw new JwtException("Cannot compute thumbprint for kty: {$this->kty}");
+        }
+
+        $canonical = [];
+        foreach ($members as $member) {
+            if ($member === 'kty') {
+                $canonical['kty'] = $this->kty;
+                continue;
+            }
+
+            $value = $this->params[$member] ?? null;
+            if ($value === null || $value === '') {
+                throw new JwtException(
+                    "JWK thumbprint requires \"{$member}\" for kty {$this->kty}"
+                );
+            }
+            $canonical[$member] = (string) $value;
+        }
+
+        $json = json_encode($canonical, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if ($json === false) {
+            throw new JwtException('Failed to build canonical JWK JSON: ' . json_last_error_msg());
+        }
+
+        return $json;
+    }
+
+    /**
+     * 是否为 OKP（Ed25519 / X25519）密钥
+     */
+    public function isOkp(): bool
+    {
+        return $this->kty === 'OKP';
+    }
+
+    /**
+     * 返回椭圆曲线名称（EC / OKP 专有）
+     */
+    public function getCurve(): ?string
+    {
+        $crv = $this->params['crv'] ?? null;
+        return $crv === null ? null : (string) $crv;
+    }
+
+    /**
+     * base64url 编码（RFC 7515 附录 C）
+     */
+    private static function base64UrlEncode(string $data): string
+    {
+        return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
     }
 
     /**

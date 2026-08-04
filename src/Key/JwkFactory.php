@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Kode\Jwt\Key;
 
 use Kode\Jwt\Exception\JwtException;
+use Kode\Jwt\Signature\Ed25519;
 
 /**
  * JWK 密钥生成工厂
@@ -100,6 +101,76 @@ final class JwkFactory
     }
 
     /**
+     * 生成 EC 密钥对（P-256 / P-384 / P-521）
+     *
+     * @param string $curve JWK 曲线名（P-256 / P-384 / P-521）
+     * @param string|null $kid 密钥标识
+     * @return array{private: Jwk, public: Jwk}
+     * @throws JwtException 当曲线不受支持或生成失败时
+     */
+    public static function generateEcKeyPair(string $curve = 'P-256', ?string $kid = null): array
+    {
+        $map = [
+            'P-256' => ['prime256v1', 'ES256'],
+            'P-384' => ['secp384r1', 'ES384'],
+            'P-521' => ['secp521r1', 'ES512'],
+        ];
+
+        if (!isset($map[$curve])) {
+            throw new JwtException(
+                "Unsupported EC curve: {$curve}. Supported: " . implode(', ', array_keys($map))
+            );
+        }
+
+        [$opensslCurve, $alg] = $map[$curve];
+
+        $keyResource = openssl_pkey_new([
+            'curve_name' => $opensslCurve,
+            'private_key_type' => OPENSSL_KEYTYPE_EC,
+        ]);
+        if ($keyResource === false) {
+            throw new JwtException('Failed to generate EC key pair: ' . self::lastSslError());
+        }
+
+        $privatePem = '';
+        if (!openssl_pkey_export($keyResource, $privatePem)) {
+            throw new JwtException('Failed to export EC private key');
+        }
+
+        $kid ??= self::generateKid('EC');
+        $private = KeyConverter::ecPrivateKeyToJwk($privatePem, $kid, $alg);
+
+        return ['private' => $private, 'public' => $private->toPublic()];
+    }
+
+    /**
+     * 生成 Ed25519（OKP）密钥对
+     *
+     * @param string|null $kid 密钥标识
+     * @return array{private: Jwk, public: Jwk}
+     * @throws JwtException 当 sodium 扩展缺失时
+     */
+    public static function generateEd25519KeyPair(?string $kid = null): array
+    {
+        $pair = Ed25519::generateKeyPair();
+        $kid ??= self::generateKid('OKP');
+
+        $private = Jwk::create(
+            kty: 'OKP',
+            params: [
+                'crv' => 'Ed25519',
+                'x' => self::base64UrlEncode($pair['publicRaw']),
+                'd' => self::base64UrlEncode($pair['seed']),
+            ],
+            use: 'sig',
+            alg: 'EdDSA',
+            kid: $kid,
+        );
+
+        return ['private' => $private, 'public' => $private->toPublic()];
+    }
+
+    /**
      * 生成密钥标识 kid
      *
      * 使用 8 字节密码学安全随机数，编码为 16 位十六进制字符串。
@@ -126,7 +197,9 @@ final class JwkFactory
     }
 
     /**
-     * 从 PEM 文件创建 JWK（自动识别公钥/私钥）
+     * 从 PEM 创建 JWK（自动识别密钥类型与公私钥）
+     *
+     * 支持 RSA、EC（P-256/P-384/P-521）与 Ed25519（OKP）。
      *
      * @param string $pem PEM 字符串或文件路径
      * @param string|null $kid
@@ -137,21 +210,54 @@ final class JwkFactory
     public static function fromPem(string $pem, ?string $kid = null, ?string $alg = null): Jwk
     {
         $content = is_file($pem) ? (string) file_get_contents($pem) : $pem;
-        $kid ??= self::generateKid('RSA');
+
+        // Ed25519 无法通过 openssl_pkey_get_details 取得原始坐标，单独识别
+        if (self::isEd25519Pem($content)) {
+            return str_contains($content, 'PRIVATE KEY')
+                ? KeyConverter::ed25519PrivateKeyToJwk($content, $kid ?? self::generateKid('OKP'))
+                : KeyConverter::ed25519PublicKeyToJwk($content, $kid ?? self::generateKid('OKP'));
+        }
 
         // 优先尝试作为私钥加载（私钥通常包含公钥信息）
         $privateKey = @openssl_pkey_get_private($content);
         if ($privateKey !== false) {
-            return KeyConverter::rsaPrivateKeyToJwk($pem, $kid, $alg);
+            $type = (int) (openssl_pkey_get_details($privateKey)['type'] ?? -1);
+            return $type === OPENSSL_KEYTYPE_EC
+                ? KeyConverter::ecPrivateKeyToJwk($content, $kid ?? self::generateKid('EC'), $alg)
+                : KeyConverter::rsaPrivateKeyToJwk($content, $kid ?? self::generateKid('RSA'), $alg);
         }
 
         // 退化为公钥
         $publicKey = @openssl_pkey_get_public($content);
         if ($publicKey !== false) {
-            return KeyConverter::rsaPublicKeyToJwk($pem, $kid, $alg);
+            $type = (int) (openssl_pkey_get_details($publicKey)['type'] ?? -1);
+            return $type === OPENSSL_KEYTYPE_EC
+                ? KeyConverter::ecPublicKeyToJwk($content, $kid ?? self::generateKid('EC'), $alg)
+                : KeyConverter::rsaPublicKeyToJwk($content, $kid ?? self::generateKid('RSA'), $alg);
         }
 
         throw new JwtException('PEM is neither a valid private key nor a public key');
+    }
+
+    /**
+     * 判断 PEM 是否为 Ed25519 密钥
+     */
+    private static function isEd25519Pem(string $pem): bool
+    {
+        try {
+            if (str_contains($pem, 'PRIVATE KEY')) {
+                Ed25519::pemToSeed($pem);
+                return true;
+            }
+            if (str_contains($pem, 'PUBLIC KEY')) {
+                Ed25519::pemToPublicKey($pem);
+                return true;
+            }
+        } catch (JwtException) {
+            return false;
+        }
+
+        return false;
     }
 
     /**

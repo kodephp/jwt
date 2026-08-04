@@ -44,3 +44,7 @@ Thumbs.db
 /storage/
 /runtime/
 /examples/runtime/
+
+# Local-only: workspace memory & changelog are NOT pushed to the repository
+.workbuddy/
+CHANGELOG.md

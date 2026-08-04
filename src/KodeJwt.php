@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace Kode\Jwt;
 
 use Kode\Jwt\Claim\ClaimInspector;
+use Kode\Jwt\Claim\Confirmation;
 use Kode\Jwt\Claim\Scope;
 use Kode\Jwt\Config\ConfigLoader;
 use Kode\Jwt\Contract\StorageInterface;
 use Kode\Jwt\Contract\GuardInterface;
 use Kode\Jwt\Contract\LoggerInterface;
+use Kode\Jwt\Enum\Algorithm;
 use Kode\Jwt\Guard\SsoGuard;
 use Kode\Jwt\Guard\MloGuard;
 use Kode\Jwt\Key\JwkSet;
@@ -18,11 +20,15 @@ use Kode\Jwt\Log\NullLogger;
 use Kode\Jwt\OAuth2\IntrospectionResponse;
 use Kode\Jwt\OAuth2\Introspector;
 use Kode\Jwt\OAuth2\JwksPublisher;
+use Kode\Jwt\OAuth2\RevocationHandler;
 use Kode\Jwt\OpenId\DiscoveryConfiguration;
 use Kode\Jwt\OpenId\DiscoveryPublisher;
 use Kode\Jwt\Policy\TokenPolicy;
 use Kode\Jwt\Security\AntiReplay;
+use Kode\Jwt\Security\DPoP\DPoPProofBuilder;
+use Kode\Jwt\Security\DPoP\DPoPValidator;
 use Kode\Jwt\Storage\StorageFactory;
+use Kode\Jwt\Key\Jwk;
 use Kode\Jwt\Token\Builder;
 use Kode\Jwt\Token\Parser;
 use Kode\Jwt\Event\EventDispatcher;
@@ -660,6 +666,68 @@ class KodeJwt
     public static function scope(string $scopeString): Scope
     {
         return Scope::fromString($scopeString);
+    }
+
+    /**
+     * 创建确认声明（cnf）— RFC 7800
+     *
+     * 将 Token 与密钥绑定，典型用于 DPoP（RFC 9449）：
+     * 传入公钥或私钥 JWK，自动取公钥并计算 RFC 7638 指纹（jkt）。
+     *
+     * @param Jwk $jwk 用于绑定的密钥（公钥或私钥 JWK 均可）
+     * @return Confirmation
+     */
+    public static function confirmationFromJwk(Jwk $jwk): Confirmation
+    {
+        return Confirmation::withJwk($jwk);
+    }
+
+    /**
+     * 创建 DPoP 证明构建器（RFC 9449）
+     *
+     * @param Algorithm $algorithm 非对称签名算法（推荐 EdDSA / ES256）
+     * @param string $privateKeyPem 私钥 PEM 或文件路径
+     * @param string|null $kid 可选密钥标识
+     * @return DPoPProofBuilder
+     */
+    public static function dpopBuilder(Algorithm $algorithm, string $privateKeyPem, ?string $kid = null): DPoPProofBuilder
+    {
+        return new DPoPProofBuilder($algorithm, $privateKeyPem, $kid);
+    }
+
+    /**
+     * 创建 DPoP 证明校验器（RFC 9449）
+     *
+     * @param int $maxAge iat 新鲜度窗口（秒），默认 300
+     * @param string|null $expectedNonce 服务端下发的 nonce（可选，强制匹配）
+     * @param string|null $expectedAth 绑定的 Access Token 哈希（可选，强制匹配）
+     * @return DPoPValidator
+     */
+    public static function dpopValidator(int $maxAge = 300, ?string $expectedNonce = null, ?string $expectedAth = null): DPoPValidator
+    {
+        return new DPoPValidator($maxAge, $expectedNonce, $expectedAth);
+    }
+
+    /**
+     * 创建 Token 撤销处理器（RFC 7009）
+     *
+     * 将 Token 的 jti 加入黑名单，与 introspection / guard 共用存储，
+     * 被撤销的 Token 在后续鉴权中立即失效。
+     *
+     * @param string|null $guard 守卫名称，传 null 使用默认守卫的 Parser 与 Storage
+     * @return RevocationHandler
+     */
+    public static function revocation(?string $guard = null): RevocationHandler
+    {
+        $guardName = $guard ?? static::config()->get('defaults.guard', 'api');
+        $guardConfig = static::config()->get("guards.{$guardName}", []);
+        $storageName = (string) ($guardConfig['storage'] ?? static::config()->get('defaults.storage', 'memory'));
+
+        return new RevocationHandler(
+            static::parser(),
+            static::storage($storageName),
+            static::logger()
+        );
     }
 
     /**

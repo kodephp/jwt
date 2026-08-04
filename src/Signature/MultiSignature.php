@@ -61,10 +61,11 @@ final class MultiSignature
                 return false;
             }
 
-            $key = $signer['key'] ?? '';
-            $expected = $this->computeSignature($payload, $key, $sig->algorithm);
+            $key = $signer['verifyKey'] ?? $signer['publicKey'] ?? $signer['key'] ?? '';
 
-            if (!hash_equals($expected, $sig->signature)) {
+            // 非对称算法（RSA-PSS / ECDSA / EdDSA）签名带随机性，
+            // 无法通过"重新签名后比对字节"来校验，必须走真正的验签流程。
+            if (!Signer::verify($payload, $sig->signature, $sig->algorithm, (string) $key)) {
                 return false;
             }
         }
@@ -120,84 +121,23 @@ final class MultiSignature
         return null;
     }
 
+    /**
+     * 统一委托 Signer 生成签名
+     *
+     * 修正点：
+     *  - ECDSA 输出 RFC 7518 §3.4 规定的 R‖S 拼接（此前错误地直接输出 DER）
+     *  - RSA-PSS 走真正的 EMSA-PSS 填充（此前错误地退化为 PKCS#1 v1.5）
+     *  - EdDSA 通过 libsodium 支持
+     *
+     * @throws JwtException 当算法不支持或密钥非法时
+     */
     private function computeSignature(string $data, string $key, Algorithm $algorithm): string
     {
-        if ($algorithm->isHmac()) {
-            return $this->signHmac($data, $key, $algorithm);
+        if ($key === '') {
+            throw new JwtException("Signing key is required for multi-signature: {$algorithm->value}");
         }
 
-        if ($algorithm->isRsa() || $algorithm->isRsapss()) {
-            return $this->signAsymmetric($data, $key, $algorithm);
-        }
-
-        if ($algorithm->isEcdsa()) {
-            return $this->signEcdsa($data, $key, $algorithm);
-        }
-
-        throw new JwtException("Unsupported algorithm for multi-signature: {$algorithm->value}");
-    }
-
-    private function signHmac(string $data, string $key, Algorithm $algorithm): string
-    {
-        $algo = match ($algorithm) {
-            Algorithm::HS256 => 'sha256',
-            Algorithm::HS384 => 'sha384',
-            Algorithm::HS512 => 'sha512',
-            default => throw new JwtException("Unsupported HMAC algorithm: {$algorithm->value}"),
-        };
-
-        return hash_hmac($algo, $data, $key, true);
-    }
-
-    private function signAsymmetric(string $data, string $key, Algorithm $algorithm): string
-    {
-        $opensslAlgo = match ($algorithm) {
-            Algorithm::RS256 => OPENSSL_ALGO_SHA256,
-            Algorithm::RS384 => OPENSSL_ALGO_SHA384,
-            Algorithm::RS512 => OPENSSL_ALGO_SHA512,
-            Algorithm::PS256 => OPENSSL_ALGO_SHA256,
-            Algorithm::PS384 => OPENSSL_ALGO_SHA384,
-            Algorithm::PS512 => OPENSSL_ALGO_SHA512,
-            default => throw new JwtException("Unsupported RSA algorithm: {$algorithm->value}"),
-        };
-
-        $privateKey = openssl_pkey_get_private($key);
-        if ($privateKey === false) {
-            throw new JwtException('Invalid private key for RSA signature');
-        }
-
-        $signature = '';
-        $success = openssl_sign($data, $signature, $privateKey, $opensslAlgo);
-
-        if (!$success) {
-            throw new JwtException('Failed to create RSA signature');
-        }
-
-        return $signature;
-    }
-
-    private function signEcdsa(string $data, string $key, Algorithm $algorithm): string
-    {
-        $opensslAlgo = match ($algorithm) {
-            Algorithm::ES256 => OPENSSL_ALGO_SHA256,
-            Algorithm::ES384 => OPENSSL_ALGO_SHA384,
-            Algorithm::ES512 => OPENSSL_ALGO_SHA512,
-            default => throw new JwtException("Unsupported ECDSA algorithm: {$algorithm->value}"),
-        };
-
-        $privateKey = openssl_pkey_get_private($key);
-        if ($privateKey === false) {
-            throw new JwtException('Invalid private key for ECDSA signature');
-        }
-
-        $signature = '';
-        $success = openssl_sign($data, $signature, $privateKey, $opensslAlgo);
-
-        if (!$success) {
-            throw new JwtException('Failed to create ECDSA signature');
-        }
-
-        return $signature;
+        return Signer::sign($data, $algorithm, $key);
     }
 
     public static function fromArray(array $config): self

@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Kode\Jwt\Token;
 
+use Kode\Jwt\Enum\Algorithm;
 use Kode\Jwt\Exception\JwtException;
 use Kode\Jwt\Exception\TokenExpiredException;
 use Kode\Jwt\Exception\TokenInvalidException;
+use Kode\Jwt\Signature\Signer;
 
 class Parser
 {
@@ -16,25 +18,6 @@ class Parser
      * @var array<string, mixed>
      */
     protected array $config;
-
-    /**
-     * RSA 公钥资源缓存
-     *
-     * 键为公钥内容的 md5 hash，值为 openssl_pkey_get_public 解析后的资源。
-     * 避免每次验签都重复读取公钥文件并解析。
-     *
-     * @var array<string, \OpenSSLAsymmetricKey|resource>
-     */
-    protected array $publicKeyCache = [];
-
-    /**
-     * 公钥文件内容缓存（按文件路径 + mtime 缓存）
-     *
-     * 避免每次验签都执行 file_get_contents。当文件 mtime 变化时自动失效。
-     *
-     * @var array<string, array{mtime: int, content: string}>
-     */
-    protected array $publicKeyFileCache = [];
 
     /**
      * 构造函数
@@ -143,6 +126,10 @@ class Parser
 
     /**
      * 验证签名
+     *
+     * 全部算法族（HS/RS/ES/PS/EdDSA）统一委托给 Signer 处理。
+     * ECDSA 会先把 JWS 的 R‖S 拼接还原为 DER 再交给 OpenSSL，
+     * RSA-PSS 走 EMSA-PSS 校验路径。
      */
     protected function verifySignature(string $data, string $signature, string $algorithm): void
     {
@@ -151,116 +138,38 @@ class Parser
             throw new TokenInvalidException('Empty token signature');
         }
 
-        switch ($algorithm) {
-            case 'HS256':
-                $this->verifyHmac($data, $decodedSignature, 'sha256');
-                break;
-            case 'HS384':
-                $this->verifyHmac($data, $decodedSignature, 'sha384');
-                break;
-            case 'HS512':
-                $this->verifyHmac($data, $decodedSignature, 'sha512');
-                break;
-            case 'RS256':
-                $this->verifyRsa($data, $decodedSignature, 'sha256');
-                break;
-            case 'RS384':
-                $this->verifyRsa($data, $decodedSignature, 'sha384');
-                break;
-            case 'RS512':
-                $this->verifyRsa($data, $decodedSignature, 'sha512');
-                break;
-            default:
-                throw new JwtException("Unsupported algorithm: {$algorithm}");
-        }
-    }
+        $resolved = Signer::resolveAlgorithm($algorithm);
 
-    /**
-     * 验证HMAC签名
-     */
-    protected function verifyHmac(string $data, string $signature, string $algorithm): void
-    {
-        if (empty($this->secret)) {
-            throw new JwtException('Secret is required for HMAC algorithms');
-        }
-
-        $hash = hash_hmac($algorithm, $data, $this->secret, true);
-
-        if (!hash_equals($hash, $signature)) {
+        if (!Signer::verify($data, $decodedSignature, $resolved, $this->resolveVerificationKey($resolved))) {
             throw new TokenInvalidException('Invalid token signature');
         }
     }
 
     /**
-     * 验证RSA签名
+     * 解析当前算法所需的验签密钥
      *
-     * 公钥资源会被缓存（以公钥内容的 md5 hash 为键），避免每次验签
-     * 都重复读取公钥文件并调用 openssl_pkey_get_public 解析。
-     * 公钥文件内容也按"路径 + mtime"缓存，避免每次验签都执行 file_get_contents。
+     * - HMAC：使用配置中的 secret
+     * - 非对称算法：优先使用 public_key，缺省时回退到 private_key（自签自验场景）
      *
-     * @throws JwtException 当公钥无效时抛出异常
+     * @throws JwtException 当密钥缺失时
      */
-    protected function verifyRsa(string $data, string $signature, string $algorithm): void
+    protected function resolveVerificationKey(Algorithm $algorithm): string
     {
-        if (empty($this->publicKey)) {
-            throw new JwtException('Public key is required for RSA algorithms');
-        }
-
-        // 如果是文件路径，按"路径 + mtime"缓存读取公钥内容，避免每次验签都执行文件 IO
-        if (is_file($this->publicKey)) {
-            $publicKey = $this->readPublicKeyFile($this->publicKey);
-        } else {
-            $publicKey = $this->publicKey;
-        }
-
-        // 以公钥内容的 md5 hash 作为缓存键
-        $cacheKey = md5($publicKey);
-
-        // 命中缓存则直接复用已解析的公钥资源
-        if (isset($this->publicKeyCache[$cacheKey])) {
-            $key = $this->publicKeyCache[$cacheKey];
-        } else {
-            $key = openssl_pkey_get_public($publicKey);
-
-            if (!$key) {
-                throw new JwtException('Invalid public key');
+        if ($algorithm->isHmac()) {
+            if ($this->secret === '') {
+                throw new JwtException('Secret is required for HMAC algorithms');
             }
-
-            // 缓存解析后的公钥资源
-            $this->publicKeyCache[$cacheKey] = $key;
+            return $this->secret;
         }
 
-        $result = openssl_verify($data, $signature, $key, $algorithm);
-
-        if ($result !== 1) {
-            throw new TokenInvalidException('Invalid token signature');
-        }
-    }
-
-    /**
-     * 按"路径 + mtime"缓存读取公钥文件内容
-     *
-     * 文件被修改（mtime 变化）时自动失效，重新读取。
-     */
-    protected function readPublicKeyFile(string $path): string
-    {
-        clearstatcache(true, $path);
-        $mtime = @filemtime($path);
-        if ($mtime === false) {
-            throw new JwtException('Failed to stat public key file');
+        $publicKey = $this->publicKey !== '' ? $this->publicKey : (string) ($this->config['private_key'] ?? '');
+        if ($publicKey === '') {
+            throw new JwtException(
+                "Public key is required for {$algorithm->family()} algorithms ({$algorithm->value})"
+            );
         }
 
-        if (isset($this->publicKeyFileCache[$path]) && $this->publicKeyFileCache[$path]['mtime'] === $mtime) {
-            return $this->publicKeyFileCache[$path]['content'];
-        }
-
-        $content = file_get_contents($path);
-        if ($content === false) {
-            throw new JwtException('Failed to read public key file');
-        }
-
-        $this->publicKeyFileCache[$path] = ['mtime' => $mtime, 'content' => $content];
-        return $content;
+        return $publicKey;
     }
 
     /**

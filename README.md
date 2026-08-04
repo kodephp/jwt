@@ -1,7 +1,7 @@
 # Kode JWT：一个健壮、全面、现代化的 PHP 8.3+ JWT 包
 
 > **项目名称**：`kode/jwt`  
-> **当前版本**：`v1.10.0`  
+> **当前版本**：`v1.11.0`  
 > **目标**：为现代 PHP 应用提供安全、灵活、高性能的 JWT 身份验证解决方案，支持单点登录（SSO）、多点登录、黑名单管理、自动续期、多平台适配、防重放攻击（Anti-Replay）、JWK 密钥管理、Token 客户端指纹绑定、JWKS 端点发布、Token Introspection、OIDC Discovery，兼容 FPM、Swoole、RoadRunner 等运行环境。
 
 ---
@@ -46,6 +46,11 @@
 | 🆕 v1.10 **OIDC Discovery（RFC 8414）** | `DiscoveryConfiguration` + `DiscoveryPublisher` 发布授权服务器元数据，支持 `/.well-known/openid-configuration` |
 | 🆕 v1.10 **Scope 值对象与声明检查器** | `Scope` 不可变集合（has/hasAny/hasAll/intersect/diff），`ClaimInspector` 链式校验 issuer/audience/scope/time window |
 | 🆕 v1.10 **TokenPolicy 策略对象** | 不可变策略值对象，链式配置（issuer/audience/platform/scope/custom），一次性 `enforce()` 完成 Token 校验 |
+| 🆕 v1.11 **完整 JWS 算法族（RFC 7518/8017/8037）** | `Signer` 统一门面：HMAC + RSA-PSS（真 EMSA-PSS）+ ECDSA（R‖S 标准 raw）+ EdDSA（Ed25519） |
+| 🆕 v1.11 **cnf 确认声明（RFC 7800）** | `Confirmation` 值对象，支持 jkt/jwk/jku/kid，绑定密钥指纹 |
+| 🆕 v1.11 **DPoP 持有证明（RFC 9449）** | `DPoPProofBuilder` / `DPoPValidator`：内联公钥 JWK 证明，防 Token 重放/转发 |
+| 🆕 v1.11 **Token 撤销端点（RFC 7009）** | `RevocationHandler` 将 jti 加入黑名单，被撤销 Token 立即失效 |
+| 🆕 v1.11 **JWK 指纹（RFC 7638）** | `Jwk::thumbprint()` 跨语言一致指纹，支持 RSA/EC/OKP/oct；EC/OKP PEM↔JWK 互转 |
 
 ---
 

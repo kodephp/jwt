@@ -68,7 +68,8 @@ final class AlgorithmTest extends TestCase
         self::assertContains('RS256', $values);
         self::assertContains('ES256', $values);
         self::assertContains('PS256', $values);
-        self::assertCount(12, $values);
+        self::assertContains('EdDSA', $values);
+        self::assertCount(13, $values);
     }
 
     public function testHmacAlgorithmsList(): void
@@ -85,6 +86,6 @@ final class AlgorithmTest extends TestCase
     {
         $asymmetricAlgos = Algorithm::asymmetricAlgorithms();
 
-        self::assertCount(9, $asymmetricAlgos);
+        self::assertCount(10, $asymmetricAlgos);
     }
 }

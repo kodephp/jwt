@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace Kode\Jwt\Token;
 
+use Kode\Jwt\Claim\Confirmation;
 use Kode\Jwt\Contract\Arrayable;
 use Kode\Jwt\Contract\Jsonable;
+use Kode\Jwt\Enum\Algorithm;
 use Kode\Jwt\Exception\JwtException;
+use Kode\Jwt\Signature\Signer;
 
 class Builder
 {
@@ -29,23 +32,6 @@ class Builder
      * @var array<string, mixed>
      */
     protected array $config;
-
-    /**
-     * RSA 私钥资源缓存
-     *
-     * 键为私钥内容的 md5 hash，值为 openssl_pkey_get_private 解析后的资源。
-     * 避免每次签发都重复读取私钥文件并解析。
-     *
-     * @var array<string, \OpenSSLAsymmetricKey|resource>
-     */
-    protected array $privateKeyCache = [];
-
-    /**
-     * 私钥文件内容缓存（按文件路径 + mtime 缓存）
-     *
-     * @var array<string, array{mtime: int, content: string}>
-     */
-    protected array $privateKeyFileCache = [];
 
     /**
      * 构造函数
@@ -240,6 +226,21 @@ class Builder
     }
 
     /**
+     * 设置 cnf 确认声明（RFC 7800）
+     *
+     * 将 Token 与某个密钥/证据绑定，典型用途是 DPoP（RFC 9449）：
+     * 用 Confirmation::withJwk($publicOrPrivateJwk) 绑定公钥指纹，
+     * 资源服务器据此确认请求方持有对应私钥。
+     *
+     * @param Confirmation $confirmation 确认声明值对象
+     * @return $this
+     */
+    public function setConfirmation(Confirmation $confirmation): self
+    {
+        return $this->setClaim('cnf', $confirmation->toArray());
+    }
+
+    /**
      * 从Jsonable对象设置声明
      */
     public function fromJsonable(Jsonable $jsonable): self
@@ -297,27 +298,43 @@ class Builder
 
     /**
      * 创建签名
+     *
+     * 全部算法族（HS/RS/ES/PS/EdDSA）统一委托给 Signer 处理，
+     * ECDSA 自动完成 DER → R‖S 转换，RSA-PSS 自动使用 EMSA-PSS 填充。
      */
     protected function createSignature(string $data): string
     {
-        $algorithm = $this->headers['alg'] ?? 'HS256';
+        $algorithm = Signer::resolveAlgorithm((string) ($this->headers['alg'] ?? 'HS256'));
+        $signature = Signer::sign($data, $algorithm, $this->resolveSigningKey($algorithm));
 
-        switch ($algorithm) {
-            case 'HS256':
-                return $this->signHmac($data, 'sha256');
-            case 'HS384':
-                return $this->signHmac($data, 'sha384');
-            case 'HS512':
-                return $this->signHmac($data, 'sha512');
-            case 'RS256':
-                return $this->signRsa($data, 'sha256');
-            case 'RS384':
-                return $this->signRsa($data, 'sha384');
-            case 'RS512':
-                return $this->signRsa($data, 'sha512');
-            default:
-                throw new JwtException("Unsupported algorithm: {$algorithm}");
+        return rtrim(strtr(base64_encode($signature), '+/', '-_'), '=');
+    }
+
+    /**
+     * 解析当前算法所需的签名密钥
+     *
+     * - HMAC：使用配置中的 secret
+     * - RSA / ECDSA / RSA-PSS / EdDSA：使用配置中的 private_key（支持 PEM 或文件路径）
+     *
+     * @throws JwtException 当密钥缺失时
+     */
+    protected function resolveSigningKey(Algorithm $algorithm): string
+    {
+        if ($algorithm->isHmac()) {
+            if ($this->secret === '') {
+                throw new JwtException('Secret is required for HMAC algorithms');
+            }
+            return $this->secret;
         }
+
+        $privateKey = (string) ($this->config['private_key'] ?? '');
+        if ($privateKey === '') {
+            throw new JwtException(
+                "Private key is required for {$algorithm->family()} algorithms ({$algorithm->value})"
+            );
+        }
+
+        return $privateKey;
     }
 
     /**
@@ -331,91 +348,6 @@ class Builder
     protected static function generateJti(): string
     {
         return 'jwt_' . bin2hex(random_bytes(16));
-    }
-
-    /**
-     * HMAC签名
-     */
-    protected function signHmac(string $data, string $algorithm): string
-    {
-        if (empty($this->secret)) {
-            throw new JwtException('Secret is required for HMAC algorithms');
-        }
-
-        $hash = hash_hmac($algorithm, $data, $this->secret, true);
-        return rtrim(strtr(base64_encode($hash), '+/', '-_'), '=');
-    }
-
-    /**
-     * RSA签名
-     *
-     * 私钥资源会被缓存（以私钥内容的 md5 hash 为键），避免每次签发都重复解析。
-     * 私钥文件内容也按"路径 + mtime"缓存，避免每次签发都执行 file_get_contents。
-     *
-     * @throws JwtException 当私钥无效时抛出异常
-     */
-    protected function signRsa(string $data, string $algorithm): string
-    {
-        $privateKey = $this->config['private_key'] ?? null;
-
-        if (empty($privateKey)) {
-            throw new JwtException('Private key is required for RSA algorithms');
-        }
-
-        // 如果是文件路径，按"路径 + mtime"缓存读取私钥内容
-        if (is_file($privateKey)) {
-            $privateKey = $this->readPrivateKeyFile($privateKey);
-        }
-
-        // 以私钥内容的 md5 hash 作为缓存键
-        $cacheKey = md5($privateKey);
-
-        if (isset($this->privateKeyCache[$cacheKey])) {
-            $key = $this->privateKeyCache[$cacheKey];
-        } else {
-            $key = openssl_pkey_get_private($privateKey);
-
-            if (!$key) {
-                throw new JwtException('Invalid private key');
-            }
-
-            $this->privateKeyCache[$cacheKey] = $key;
-        }
-
-        $signature = '';
-        $result = openssl_sign($data, $signature, $key, $algorithm);
-
-        if (!$result) {
-            throw new JwtException('Failed to create RSA signature');
-        }
-
-        return rtrim(strtr(base64_encode($signature), '+/', '-_'), '=');
-    }
-
-    /**
-     * 按"路径 + mtime"缓存读取私钥文件内容
-     *
-     * 文件被修改（mtime 变化）时自动失效，重新读取。
-     */
-    protected function readPrivateKeyFile(string $path): string
-    {
-        clearstatcache(true, $path);
-        $mtime = @filemtime($path);
-        if ($mtime === false) {
-            throw new JwtException('Failed to stat private key file');
-        }
-
-        if (isset($this->privateKeyFileCache[$path]) && $this->privateKeyFileCache[$path]['mtime'] === $mtime) {
-            return $this->privateKeyFileCache[$path]['content'];
-        }
-
-        $content = file_get_contents($path);
-        if ($content === false) {
-            throw new JwtException('Failed to read private key file');
-        }
-
-        $this->privateKeyFileCache[$path] = ['mtime' => $mtime, 'content' => $content];
-        return $content;
     }
 
     /**
@@ -464,55 +396,21 @@ class Builder
     }
 
     /**
-     * 使用指定密钥创建签名
+     * 使用指定密钥创建签名（多签名 / 分离式签名场景）
+     *
+     * 支持全部算法族，密钥语义与 Signer 一致：
+     * HMAC 传入共享密钥，其余算法传入 PEM 私钥或私钥文件路径。
      */
     private function signWithKey(string $data, string $key, string $algorithm): string
     {
-        switch ($algorithm) {
-            case 'HS256':
-                $hash = hash_hmac('sha256', $data, $key, true);
-                break;
-            case 'HS384':
-                $hash = hash_hmac('sha384', $data, $key, true);
-                break;
-            case 'HS512':
-                $hash = hash_hmac('sha512', $data, $key, true);
-                break;
-            case 'RS256':
-                $hash = $this->signRsaWithKey($data, $key, OPENSSL_ALGO_SHA256);
-                break;
-            case 'RS384':
-                $hash = $this->signRsaWithKey($data, $key, OPENSSL_ALGO_SHA384);
-                break;
-            case 'RS512':
-                $hash = $this->signRsaWithKey($data, $key, OPENSSL_ALGO_SHA512);
-                break;
-            default:
-                throw new JwtException("Unsupported algorithm for multi-signature: {$algorithm}");
+        $resolved = Algorithm::tryFromName($algorithm);
+        if ($resolved === null) {
+            throw new JwtException("Unsupported algorithm for multi-signature: {$algorithm}");
         }
 
-        return rtrim(strtr(base64_encode($hash), '+/', '-_'), '=');
-    }
+        $signature = Signer::sign($data, $resolved, $key);
 
-    /**
-     * 使用指定密钥创建 RSA 签名
-     */
-    private function signRsaWithKey(string $data, string $key, int $opensslAlgo): string
-    {
-        $privateKey = openssl_pkey_get_private($key);
-
-        if (!$privateKey) {
-            throw new JwtException('Invalid private key for RSA signature');
-        }
-
-        $signature = '';
-        $result = openssl_sign($data, $signature, $privateKey, $opensslAlgo);
-
-        if (!$result) {
-            throw new JwtException('Failed to create RSA signature');
-        }
-
-        return $signature;
+        return rtrim(strtr(base64_encode($signature), '+/', '-_'), '=');
     }
 
     /**
