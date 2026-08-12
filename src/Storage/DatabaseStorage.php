@@ -272,6 +272,15 @@ class DatabaseStorage implements SsoStorageInterface
         return $count > 0;
     }
 
+    public function removeFromBlacklist(string $jti): bool
+    {
+        $blacklistTable = $this->table . '_blacklist';
+        $sql = "DELETE FROM {$blacklistTable} WHERE jti = ?";
+        $stmt = $this->pdo->prepare($sql);
+
+        return $stmt->execute([$jti]);
+    }
+
     /**
      * 概率触发过期清理（1% 概率）
      *

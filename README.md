@@ -1,7 +1,7 @@
 # Kode JWT：一个健壮、全面、现代化的 PHP 8.3+ JWT 包
 
 > **项目名称**：`kode/jwt`  
-> **当前版本**：`v1.11.1`  
+> **当前版本**：`v1.12.0`  
 > **目标**：为现代 PHP 应用提供安全、灵活、高性能的 JWT 身份验证解决方案，支持单点登录（SSO）、多点登录、黑名单管理、自动续期、多平台适配、防重放攻击（Anti-Replay）、JWK 密钥管理、Token 客户端指纹绑定、JWKS 端点发布、Token Introspection、OIDC Discovery，兼容 FPM、Swoole、RoadRunner 等运行环境。
 
 ---
@@ -753,11 +753,36 @@ try {
 $newToken = KodeJwt::guard('api')->refresh($oldToken);
 ```
 
-### 4. 注销 Token（加入黑名单）
+### 4. 注销 Token（黑名单管理）
+
+被「注销 / 封禁 / 撤销」的 Token 会将其 `jti` 写入黑名单，后续在 **Guard 鉴权**、**Introspection**、**isTokenValid** 中都会立即判定为失效。
 
 ```php
+// 4.1 按完整 Token 撤销（RFC 7009 语义）：解析取 jti，以「距过期剩余时间」为 TTL 入黑名单
+//     解析/验签失败或无 jti 一律视为「已撤销」返回 true（侧通道防护，不泄露 Token 是否存在）
+KodeJwt::revokeToken($token);
+
+// 4.2 直接按 jti 撤销（无需持有原始 Token，适用于审计日志 / 外部系统回调等仅有 jti 的场景）
+KodeJwt::revokeJti($jti, 3600);          // 第二参数为黑名单保留时间（秒），默认 3600
+
+// 4.3 查询 jti 是否已被撤销
+if (KodeJwt::isBlacklisted($jti)) {
+    // 该 Token 已失效
+}
+
+// 4.4 撤销恢复（将 jti 移出黑名单，用于误撤销后恢复）
+//     仅移除黑名单记录，不影响已过期（exp）或 SSO 映射等其它状态
+KodeJwt::unblacklist($jti);
+
+// 4.5 通过 Guard 注销（等价于按完整 Token 撤销，兼容旧用法）
 KodeJwt::guard('api')->invalidate($token);
+
+// 4.6 强制下线某用户所有 Token（按平台或全平台）
+$count = KodeJwt::revokeUserTokens('123', 'app');     // 指定平台
+$count = KodeJwt::revokeUserTokens('123');            // 全部平台
 ```
+
+> 上述方法均支持可选的 `$guard` 参数（传 `null` 使用默认守卫），自动路由到该守卫对应的存储后端。
 
 ### 5. 使用便捷方法
 
@@ -1194,23 +1219,36 @@ $policy2 = \Kode\Jwt\Policy\TokenPolicy::fromArray($array);
 
 ### 7. KodeJwt 门面便捷方法
 
-v1.10.0 在 `KodeJwt` 门面层新增 8 个便捷方法：
+`KodeJwt` 门面在 v1.10 / v1.11 / v1.12 持续扩充，覆盖签发、验证、黑名单、Introspection、OIDC 等场景：
 
 | 方法 | 用途 |
 |------|------|
+| `KodeJwt::builder()` | 获取全新 Builder 实例（每次返回隔离实例，不可跨请求共享） |
+| `KodeJwt::guard(name)` | 获取 Guard，签发用 `issue(new Payload(...))` |
+| `KodeJwt::getUserTokens(uid, platform, guard)` | 获取用户活跃 Token 列表 |
+| `KodeJwt::revokeUserTokens(uid, platform, guard)` | 强制注销用户全部 Token |
+| `KodeJwt::isTokenValid(token, guard)` | 检查 Token 是否有效（含黑名单） |
+| `KodeJwt::getTokenInfo(token, guard)` | 获取 Token 详情 |
+| `KodeJwt::revokeToken(token, guard)` | 按完整 Token 撤销（RFC 7009 语义） |
+| `KodeJwt::revokeJti(jti, ttl, guard)` | 直接按 jti 撤销 |
+| `KodeJwt::isBlacklisted(jti, guard)` | 查询 jti 是否已撤销 |
+| `KodeJwt::unblacklist(jti, guard)` | 撤销恢复（移出黑名单） |
 | `KodeJwt::jwksPublisher(JwkSet, maxAge)` | 创建 JWKS 端点发布器 |
 | `KodeJwt::introspector(guard)` | 创建 Introspector |
 | `KodeJwt::introspect(token, platform, clientId, guard)` | 便捷内省 |
+| `KodeJwt::revocation(guard)` | 创建 Token 撤销处理器（RFC 7009） |
 | `KodeJwt::discoveryConfiguration(issuer, ...)` | 创建 Discovery 配置 |
 | `KodeJwt::discoveryPublisher(config, maxAge)` | 创建 Discovery 端点发布器 |
 | `KodeJwt::tokenPolicy()` | 创建空 Token 策略 |
 | `KodeJwt::claimInspector()` | 创建 Claim 检查器 |
 | `KodeJwt::scope(string)` | 从字符串创建 Scope 值对象 |
+| `KodeJwt::confirmationFromJwk(jwk)` | 由 JWK 创建 cnf 确认声明（RFC 7800） |
+| `KodeJwt::dpopBuilder(alg, key)` / `dpopValidator()` | DPoP 持有证明构建/校验（RFC 9449） |
 
 ### 8. 测试与质量
 
-- 测试套件：246 个测试 / 610 个断言
-- 新增测试：`JwksEndpointTest` (18) / `IntrospectionTest` (16) / `DiscoveryTest` (18) / `ScopeTest` (11) / `ClaimInspectorTest` (22) / `TokenPolicyTest` (19)
+- 测试套件：281 个测试 / 711 个断言
+- 核心测试：`BlacklistTest`（黑名单完整生命周期）/ `RevocationTest`（RFC 7009）/ `OAuth2Test`（Introspection）/ `DpopTest`（RFC 9449）/ `KeyCryptoTest`（RFC 7638/8037 指纹）
 - PHPCS：0 错误 / 0 警告
 - PHPStan：level 7+
 

@@ -87,6 +87,17 @@ interface StorageInterface
     public function isBlacklisted(string $jti): bool;
 
     /**
+     * 将 JTI 从黑名单中移除（撤销恢复）
+     *
+     * 用于管理员误撤销后恢复 Token 有效性。仅移除黑名单记录，
+     * 不影响已过期（exp）或 SSO 映射等其他状态。
+     *
+     * @param string $jti JWT ID
+     * @return bool 是否成功移除（JTI 原本不在黑名单中也返回 true）
+     */
+    public function removeFromBlacklist(string $jti): bool;
+
+    /**
      * 清理过期数据
      *
      * @return bool|int

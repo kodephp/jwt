@@ -219,6 +219,11 @@ class FileStorage implements SsoStorageInterface
         return $this->has("blacklist_{$jti}");
     }
 
+    public function removeFromBlacklist(string $jti): bool
+    {
+        return $this->delete("blacklist_{$jti}");
+    }
+
     /**
      * 清理过期项
      *

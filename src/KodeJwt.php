@@ -545,6 +545,78 @@ class KodeJwt
     }
 
     /**
+     * 按完整 Token 撤销（将 jti 加入黑名单，RFC 7009）
+     *
+     * 内部走 RevocationHandler：解析验签 → 取 jti → 以「距过期剩余时间」为 TTL 加入黑名单。
+     * 遵循 RFC 7009 侧通道防护：解析/验签失败或 Token 无 jti，均视为「已撤销」返回 true，
+     * 不泄露 Token 是否存在/有效。
+     *
+     * @param string $token 待撤销的 Token
+     * @param string|null $guard 守卫名称，传 null 使用默认守卫
+     * @return bool 撤销请求已被接受（true）
+     */
+    public static function revokeToken(string $token, ?string $guard = null): bool
+    {
+        return static::revocation($guard)->revoke($token)->isRevoked();
+    }
+
+    /**
+     * 直接按 jti 撤销 Token（将 jti 加入黑名单）
+     *
+     * 适用于仅有 jti（如来自审计日志、外部系统回调）的场景，无需持有原始 Token。
+     *
+     * @param string $jti JWT ID
+     * @param int $ttl 黑名单保留时间（秒），默认 3600
+     * @param string|null $guard 守卫名称，传 null 使用默认守卫
+     * @return bool
+     */
+    public static function revokeJti(string $jti, int $ttl = 3600, ?string $guard = null): bool
+    {
+        return static::storageForGuard($guard)->blacklist($jti, $ttl);
+    }
+
+    /**
+     * 判断 jti 是否已被撤销（命中黑名单）
+     *
+     * @param string $jti JWT ID
+     * @param string|null $guard 守卫名称，传 null 使用默认守卫
+     * @return bool
+     */
+    public static function isBlacklisted(string $jti, ?string $guard = null): bool
+    {
+        return static::storageForGuard($guard)->isBlacklisted($jti);
+    }
+
+    /**
+     * 将 jti 从黑名单中移除（撤销恢复）
+     *
+     * 用于管理员误撤销后恢复 Token 有效性。仅移除黑名单记录，
+     * 不影响已过期（exp）或 SSO 映射等其他状态。
+     *
+     * @param string $jti JWT ID
+     * @param string|null $guard 守卫名称，传 null 使用默认守卫
+     * @return bool
+     */
+    public static function unblacklist(string $jti, ?string $guard = null): bool
+    {
+        return static::storageForGuard($guard)->removeFromBlacklist($jti);
+    }
+
+    /**
+     * 解析某守卫对应的存储实例
+     *
+     * 统一从 guard 配置推导其 storage 名称，避免多处重复推导导致不一致。
+     */
+    private static function storageForGuard(?string $guard): StorageInterface
+    {
+        $guardName = $guard ?? static::config()->get('defaults.guard', 'api');
+        $guardConfig = static::config()->get("guards.{$guardName}", []);
+        $storageName = (string) ($guardConfig['storage'] ?? static::config()->get('defaults.storage', 'memory'));
+
+        return static::storage($storageName);
+    }
+
+    /**
      * 创建 JWKS 端点发布器
      *
      * 用于 OAuth2 资源服务器 / OIDC 依赖方通过 jwks_uri 拉取验签公钥。

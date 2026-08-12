@@ -235,6 +235,19 @@ class CoroutineRedisStorage implements SsoStorageInterface
         return (bool) $result;
     }
 
+    public function removeFromBlacklist(string $jti): bool
+    {
+        $key = $this->getKey("blacklist:{$jti}");
+        $result = $this->redis->del($key);
+
+        if ($result === false && $this->redis->errCode === 1) {
+            $this->connect();
+            $result = $this->redis->del($key);
+        }
+
+        return (bool) $result;
+    }
+
     /**
      * 原子化撤销 Token
      *

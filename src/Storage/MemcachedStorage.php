@@ -167,6 +167,12 @@ class MemcachedStorage implements SsoStorageInterface
         return $this->memcached->getResultCode() === Memcached::RES_SUCCESS;
     }
 
+    public function removeFromBlacklist(string $jti): bool
+    {
+        $key = $this->getKey("blacklist:{$jti}");
+        return $this->memcached->delete($key);
+    }
+
     /**
      * 清理过期项（Memcached 会自动清理过期项）
      *

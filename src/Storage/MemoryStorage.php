@@ -127,6 +127,12 @@ class MemoryStorage implements SsoStorageInterface
         return true;
     }
 
+    public function removeFromBlacklist(string $jti): bool
+    {
+        unset($this->blacklist[$jti]);
+        return true;
+    }
+
     public function cleanExpired(): bool|int
     {
         $count = 0;

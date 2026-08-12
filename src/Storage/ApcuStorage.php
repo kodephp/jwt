@@ -119,6 +119,12 @@ class ApcuStorage implements SsoStorageInterface
         return apcu_exists($key);
     }
 
+    public function removeFromBlacklist(string $jti): bool
+    {
+        $key = $this->getKey("blacklist:{$jti}");
+        return apcu_delete($key);
+    }
+
     /**
      * 清理过期项（APCu 会自动清理过期项）
      */

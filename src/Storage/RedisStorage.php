@@ -268,6 +268,12 @@ class RedisStorage implements SsoStorageInterface
         return (bool) $this->redis->exists($key);
     }
 
+    public function removeFromBlacklist(string $jti): bool
+    {
+        $key = $this->getKey("blacklist:{$jti}");
+        return (bool) $this->redis->del($key);
+    }
+
     /**
      * 原子化撤销 Token
      *

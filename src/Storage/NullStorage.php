@@ -123,10 +123,15 @@ class NullStorage implements StorageInterface, SsoStorageInterface
         return false;
     }
 
+    public function removeFromBlacklist(string $jti): bool
+    {
+        return true;
+    }
+
     /**
      * 清理过期项（空操作）
      *
-     * @return bool
+ * @return bool
      */
     public function cleanExpired(): bool
     {
