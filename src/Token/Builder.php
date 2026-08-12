@@ -53,6 +53,26 @@ class Builder
     }
 
     /**
+     * 重置构建器到初始状态（清空已累积的 claims / headers，恢复默认 typ/alg）
+     *
+     * 仅用于「有意复用同一个 Builder 实例」的场景。
+     * 一般情况下无需调用 —— KodeJwt::builder() 每次都返回全新实例，
+     * 不要跨请求共享 Builder，否则会泄漏前次 claims / 碰撞 jti。
+     *
+     * @return $this
+     */
+    public function reset(): self
+    {
+        $this->claims = [];
+        $this->headers = [
+            'typ' => 'JWT',
+            'alg' => 'HS256',
+        ];
+
+        return $this;
+    }
+
+    /**
      * 设置头部信息
      */
     public function setHeader(string $key, mixed $value): self

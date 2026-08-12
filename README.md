@@ -1,7 +1,7 @@
 # Kode JWT：一个健壮、全面、现代化的 PHP 8.3+ JWT 包
 
 > **项目名称**：`kode/jwt`  
-> **当前版本**：`v1.11.0`  
+> **当前版本**：`v1.11.1`  
 > **目标**：为现代 PHP 应用提供安全、灵活、高性能的 JWT 身份验证解决方案，支持单点登录（SSO）、多点登录、黑名单管理、自动续期、多平台适配、防重放攻击（Anti-Replay）、JWK 密钥管理、Token 客户端指纹绑定、JWKS 端点发布、Token Introspection、OIDC Discovery，兼容 FPM、Swoole、RoadRunner 等运行环境。
 
 ---
@@ -771,6 +771,22 @@ $token = KodeJwt::builder()
     ->setPermissions(['read', 'write'])
     ->setCustom(['department' => 'IT'])
     ->issue();
+```
+
+> ⚠️ **`KodeJwt::builder()` 不可跨请求共享（Builder 是可变对象）**
+> `KodeJwt::builder()` 每次调用都返回**全新实例**，因此以下两种用法都是安全的：
+> ```php
+> // ✅ 推荐：每次需要都重新获取，状态天然隔离
+> $token = KodeJwt::builder()->setUid(123)->issue();
+>
+> // ✅ 有意复用同一个实例时，先 reset() 清空前次累积的 claims / jti
+> $builder = KodeJwt::builder();
+> $builder->setUid(123)->issue();
+> $builder->reset();              // 必须：否则会泄漏上次的 claims、碰撞 jti
+> $builder->setUid(456)->issue();
+> ```
+> 切勿把 `KodeJwt::builder()` 的返回值存为全局/静态单例并在多次签发间复用，否则会出现 claims 泄漏与前次 jti 碰撞。
+> 生产环境签发更推荐 `KodeJwt::guard($g)->issue(new Payload(...))`，由 Guard 内部管理独立实例。
 
 // 获取用户的所有活跃Token
 $tokens = KodeJwt::getUserTokens('123', 'app');

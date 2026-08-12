@@ -41,7 +41,6 @@ class KodeJwt
     private static array $guards = [];
     private static array $storages = [];
     private static ?EventDispatcher $eventDispatcher = null;
-    private static ?Builder $builder = null;
     private static ?Parser $parser = null;
     private static ?LoggerInterface $logger = null;
     private static ?AntiReplay $antiReplay = null;
@@ -348,15 +347,18 @@ class KodeJwt
     }
 
     /**
-     * 获取Token构建器
+     * 获取一个全新的 Token 构建器实例
+     *
+     * ⚠️ 每次调用都返回全新的、状态隔离的 Builder 实例。
+     * Builder 是可变对象（setClaim/setClaims 会累积状态），
+     * 跨请求复用同一个实例会泄漏前次 claims、碰撞 jti。
+     * 因此这里刻意不缓存单例。需复用同一实例时，请调用 Builder::reset()。
+     *
+     * 推荐通过 KodeJwt::guard($g)->issue(new Payload(...)) 签发 Token。
      */
     public static function builder(): Builder
     {
-        if (static::$builder === null) {
-            static::$builder = new Builder(static::config()->get('guards.api', []));
-        }
-
-        return static::$builder;
+        return new Builder(static::config()->get('guards.api', []));
     }
 
     /**
@@ -739,7 +741,6 @@ class KodeJwt
     {
         static::$guards = [];
         static::$storages = [];
-        static::$builder = null;
         static::$parser = null;
         static::$logger = null;
         static::$antiReplay = null;
