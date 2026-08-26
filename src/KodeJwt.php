@@ -8,6 +8,7 @@ use Kode\Jwt\Claim\ClaimInspector;
 use Kode\Jwt\Claim\Confirmation;
 use Kode\Jwt\Claim\Scope;
 use Kode\Jwt\Config\ConfigLoader;
+use Kode\Jwt\Exception\JwtException;
 use Kode\Jwt\Contract\StorageInterface;
 use Kode\Jwt\Contract\GuardInterface;
 use Kode\Jwt\Contract\LoggerInterface;
@@ -395,6 +396,12 @@ class KodeJwt
     public static function guard(?string $name = null): GuardInterface
     {
         $name = $name ?? static::config()->get('defaults.guard', 'api');
+
+        $availableGuards = array_keys(static::config()->get('guards', []));
+
+        if (!in_array($name, $availableGuards, true) && $name !== 'api') {
+            throw new JwtException("Guard [{$name}] is not configured. Available guards: " . implode(', ', $availableGuards));
+        }
 
         if (!isset(static::$guards[$name])) {
             $guardConfig = static::config()->get("guards.{$name}", []);
