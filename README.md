@@ -3497,6 +3497,8 @@ $guard = KodeJwt::guard('api');
 $guard = KodeJwt::guard('default');
 ```
 
+> ⚠️ **严格验证**：自 v1.12.1 起，`KodeJwt::guard($name)` 会在创建 Guard 实例前验证 `$name` 是否在配置的 `guards` 中。若请求的 Guard 未配置（且非默认 'api'），将抛出 `JwtException: Guard [name] is not configured. Available guards: api`，防止因配置缺失导致的 silent fallback 风险。
+
 #### Token 操作方法
 
 ```php
