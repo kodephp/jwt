@@ -287,9 +287,10 @@ return [
             'provider' => 'users',        // 用户提供者
             'storage' => 'redis',         // 存储驱动：redis, memory, null
             'blacklist_enabled' => true,  // 是否启用黑名单
-            'refresh_enabled' => true,    // 是否支持自动续期
+            'refresh_enabled' => true,    // 是否支持续期（缺省按 false 处理，建议显式写出）
             'refresh_ttl' => 20160,       // 续期窗口（分钟，默认2周）
             'ttl' => 1440,                // Token 有效期（分钟，默认24小时）
+            'single_login' => true,        // SSO 守卫：再登录是否踢出旧会话（false 允许多端并存）
             'algo' => 'RS256',            // 加密算法：RS256, HS256
             'secret' => null,             // HMAC 密钥（RS256 可为 null）
             'public_key' => null,         // RSA 公钥路径或内容
@@ -368,6 +369,7 @@ return [
         ],
         'memory' => [
             'limit' => 10000,            // 最大缓存数量
+            'blacklist_limit' => 100000, // 黑名单条数上限（常驻进程防无界增长；下限 1000）
         ],
     ],
 
@@ -631,42 +633,31 @@ $userIdentifier = $payload->getUserIdentifier();
 
 ### `Guard/SsoGuard.php`（单点登录）
 
+「同一 uid + 平台只允许一个有效会话」由 `SsoGuard::isUnique()` 在**签发时**执行，
+存储能力按接口分两条路径（见 v1.8.1 的 `SsoStorageInterface` 能力探测）：
+
 ```php
-namespace Kode\Jwt\Guard;
+// 存储实现了 SsoStorageInterface（内置 8 个驱动均是）：走原子撤销，避免并发双写竞态
+$this->storage->atomicRevoke($oldJti, $uid, $platform, $ttl);
 
-use Kode\Jwt\Contract\GuardInterface;
-use Kode\Jwt\Storage\StorageInterface;
-
-class SsoGuard implements GuardInterface
-{
-    public function __construct(
-        private StorageInterface $storage
-    ) {}
-
-    public function isUnique(string $uid, string $platform): bool
-    {
-        $key = "sso:{$uid}:{$platform}";
-        $existing = $this->storage->get($key);
-        
-        if ($existing) {
-            // 可选：自动踢出旧 Token
-            $this->storage->blacklist($existing);
-            $this->storage->delete($key);
-        }
-
-        return true;
-    }
-
-    public function register(string $uid, string $platform, string $jti): void
-    {
-        $this->storage->set(
-            "sso:{$uid}:{$platform}",
-            $jti,
-            config('jwts.guards.api.ttl')
-        );
-    }
-}
+// 存储只实现 StorageInterface（自定义驱动）：降级为「拉黑 + 删映射」
+$this->storage->blacklist($oldJti, $ttl);
+$this->storage->delete("sso:{$uid}:{$platform}");
 ```
+
+两处 `$ttl` 一律取 **`ttl + refresh_ttl`（access 与续期窗口的总寿命，至少 1 秒）**：
+被踢令牌在续期窗口内仍可被拿去刷新，黑名单条目若只按默认 3600 秒过期，
+令牌就会在窗口内「复活」（v1.13.0 修复）。
+
+开关与语义（v1.13.0 起）：
+
+| 配置 | 默认 | 说明 |
+| --- | --- | --- |
+| `single_login` | `true` | `false` 显式关闭「再登录踢出旧会话」，同一用户同平台可并存多令牌；SSO 守卫的核心语义是踢出，默认保持踢出 |
+| `platform` | `null` | 签发与校验都必须携带 platform 声明，否则 SSO 映射键无法对齐 |
+
+> 撤销是「按 jti 拉黑 + 删映射」，不会主动通知旧客户端；旧客户端下一次请求收到
+> `TokenBlacklistedException`（HTTP 401）后需走重新登录流程。
 
 ---
 
@@ -752,6 +743,16 @@ try {
 ```php
 $newToken = KodeJwt::guard('api')->refresh($oldToken);
 ```
+
+刷新会作废旧 Token（按剩余寿命拉黑）并签发新 Token，其中：
+
+- `uid / username / platform / roles / perms / custom` 原样继承；
+- `iss / sub / aud` **一并携带**（v1.13.0 起）——这三项是身份上下文，丢了就会让配了
+  `expected_claims` 的调用方在刷新后的下一次 `authenticate()` 直接失败；
+- `iat / exp / jti` 重新生成；`nonce` 随新 `jti` 一起轮换（沿用旧 nonce 会与防重放记录冲突）。
+
+刷新能力受 `refresh_enabled`（默认 `true`）与 `refresh_ttl` 窗口约束，
+窗口外或 `Token::canRefresh()` 为假时抛 `JwtException('Token cannot be refreshed')`。
 
 ### 4. 注销 Token（黑名单管理）
 

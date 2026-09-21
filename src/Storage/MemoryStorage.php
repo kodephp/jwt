@@ -9,6 +9,9 @@ use Kode\Jwt\Contract\StorageInterface;
 
 class MemoryStorage implements SsoStorageInterface
 {
+    /** 黑名单条数硬上限（可经 config['blacklist_limit'] 调整） */
+    public const DEFAULT_BLACKLIST_LIMIT = 100_000;
+
     /**
      * @var array<string, array{value: mixed, expires_at: int}>
      */
@@ -21,9 +24,12 @@ class MemoryStorage implements SsoStorageInterface
 
     protected int $limit;
 
+    protected int $blacklistLimit;
+
     public function __construct(array $config = [])
     {
         $this->limit = $config['limit'] ?? 10000;
+        $this->blacklistLimit = max(1000, (int) ($config['blacklist_limit'] ?? self::DEFAULT_BLACKLIST_LIMIT));
     }
 
     public function set(string $key, mixed $value, int $ttl = 0): bool
@@ -109,8 +115,34 @@ class MemoryStorage implements SsoStorageInterface
 
     public function blacklist(string $jti, int $ttl = 3600): bool
     {
+        if (count($this->blacklist) >= $this->blacklistLimit) {
+            $this->trimBlacklist();
+        }
+
         $this->blacklist[$jti] = time() + $ttl;
         return true;
+    }
+
+    /**
+     * 常驻进程内的黑名单只随查删是收不拢的（jti 高熵不复用），
+     * 触顶时先清已过期项，仍超则按最早到期逐个放行——等价于提前自然过期。
+     */
+    private function trimBlacklist(): void
+    {
+        $now = time();
+        foreach ($this->blacklist as $jti => $expiresAt) {
+            if ($expiresAt <= $now) {
+                unset($this->blacklist[$jti]);
+            }
+        }
+
+        $overflow = count($this->blacklist) - $this->blacklistLimit + 1;
+        if ($overflow > 0) {
+            asort($this->blacklist);
+            foreach (array_slice(array_keys($this->blacklist), 0, $overflow) as $jti) {
+                unset($this->blacklist[$jti]);
+            }
+        }
     }
 
     public function isBlacklisted(string $jti): bool

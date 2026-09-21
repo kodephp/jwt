@@ -148,6 +148,22 @@ final class MemoryStorageTest extends TestCase
         self::assertSame(-1, $this->storage->getRemainingTtl('key1'));
     }
 
+    public function testBlacklistIsBounded(): void
+    {
+        // 生效下限为 1000（防误配把黑名单裁到无意义规模）
+        $storage = new MemoryStorage(['limit' => 5000, 'blacklist_limit' => 1000]);
+
+        // 远超上限地灌入黑名单，条数应被夹在 blacklist_limit 内
+        for ($i = 0; $i < 3000; $i++) {
+            self::assertTrue($storage->blacklist("jti_{$i}", 3600));
+        }
+
+        $stats = $storage->getStats();
+        self::assertLessThanOrEqual(1000, $stats['blacklist_count']);
+        // 最近写入的仍在黑名单；被裁掉的是最早到期者
+        self::assertTrue($storage->isBlacklisted('jti_2999'));
+    }
+
     public function testClear(): void
     {
         $this->storage->setMultiple(['key1' => 'value1', 'key2' => 'value2']);

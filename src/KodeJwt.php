@@ -257,11 +257,16 @@ class KodeJwt
                     // 使用 HMAC 算法时必须配置非空密钥
                     'secret' => '',
                     'ttl' => 3600,
+                    // refresh_enabled 必须显式给出：BaseGuard 缺省按 false 处理，
+                    // 与 ConfigLoader 的默认（true）不一致时模板用户会拿到"配了
+                    // refresh_ttl 却永远刷新不了"的困惑配置
+                    'refresh_enabled' => true,
                     'refresh_ttl' => 604800,
                     'blacklist_enabled' => true,
                     'blacklist_ttl' => 604800,
                     'platform' => null,
-                    'single_login' => false,
+                    // SSO 守卫重复登录时踢出旧会话；false 显式关闭（守卫内部缺省为开）
+                    'single_login' => true,
                     // 时钟漂移容忍（秒），用于跨节点 NTP 偏差场景
                     'clock_skew' => 30,
                     // 期望的标准声明（iss/aud/sub），Parser 会强制匹配

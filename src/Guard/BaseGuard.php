@@ -162,7 +162,8 @@ abstract class BaseGuard implements GuardInterface
             throw new JwtException('Token cannot be refreshed');
         }
 
-        // 创建新的Payload
+        // 创建新的Payload（iss/sub/aud 属于身份上下文，必须随刷新携带；
+        // nonce 随新 jti 一起轮换，避免与新 token 的防重放记录冲突）
         $now = time();
         $newPayload = new Payload(
             uid: $oldPayload->uid,
@@ -173,7 +174,11 @@ abstract class BaseGuard implements GuardInterface
             jti: self::generateJti(),
             roles: $oldPayload->roles,
             perms: $oldPayload->perms,
-            custom: $oldPayload->custom
+            custom: $oldPayload->custom,
+            nonce: $oldPayload->nonce === null ? null : bin2hex(random_bytes(16)),
+            audience: $oldPayload->audience,
+            issuer: $oldPayload->issuer,
+            subject: $oldPayload->subject
         );
 
         // 构建新Token

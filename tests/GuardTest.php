@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Kode\Jwt\Tests;
 
 use Kode\Jwt\Config\ConfigLoader;
+use Kode\Jwt\Contract\StorageInterface;
 use Kode\Jwt\Contract\TokenManagerInterface;
 use Kode\Jwt\Event\EventDispatcher;
 use Kode\Jwt\Exception\TokenBlacklistedException;
@@ -315,5 +316,221 @@ final class GuardTest extends TestCase
 
         // 旧 token 应在黑名单中
         self::assertTrue($storage->isBlacklisted('jti_refresh_test'));
+    }
+
+    public function testRefreshPreservesStandardClaimsAndRotatesNonce(): void
+    {
+        $config = [
+            'algo' => 'HS256',
+            'secret' => 'unit_test_secret',
+            'ttl' => 1440,
+            'refresh_enabled' => true,
+            'refresh_ttl' => 20160,
+            'blacklist_enabled' => true,
+        ];
+
+        $storage = new MemoryStorage(['limit' => 1000]);
+        $guard = new MloGuard(
+            $storage,
+            new Builder($config),
+            new Parser($config),
+            new EventDispatcher(),
+            null,
+            $config
+        );
+
+        $now = time();
+        $payload = new Payload(
+            uid: 55,
+            username: 'alice',
+            platform: 'web',
+            exp: $now + 3600,
+            iat: $now,
+            jti: 'jti_claims_old',
+            nonce: 'nonce_old',
+            audience: 'aud-1',
+            issuer: 'kode-test',
+            subject: 'sub-55'
+        );
+
+        $issued = $guard->issue($payload);
+        $refreshed = $guard->refresh($issued['token']);
+
+        $newPayload = $guard->authenticate($refreshed['token']);
+        self::assertSame('kode-test', $newPayload->issuer, 'iss 必须随刷新携带');
+        self::assertSame('sub-55', $newPayload->subject, 'sub 必须随刷新携带');
+        self::assertSame('aud-1', $newPayload->audience, 'aud 必须随刷新携带');
+        self::assertNotSame('jti_claims_old', $newPayload->jti, 'jti 必须轮换');
+        self::assertNotSame('nonce_old', $newPayload->nonce, 'nonce 应随新 jti 轮换');
+        self::assertNotNull($newPayload->nonce);
+    }
+
+    /**
+     * single_login=false 时必须关闭「再登录踢出旧会话」（SSO 守卫唯一的策略开关）
+     */
+    public function testSsoSingleLoginDisabledKeepsOldTokenAlive(): void
+    {
+        $guard = $this->ssoGuardWith(new MemoryStorage(['limit' => 1000]), ['single_login' => false]);
+
+        $first = $guard->issue($this->payloadWithJti('jti_off_first'))['token'];
+        $guard->issue($this->payloadWithJti('jti_off_second'));
+
+        $verified = $guard->authenticate($first);
+        self::assertSame('jti_off_first', $verified->jti, '关闭单点登录后旧 Token 不应被撤销');
+    }
+
+    /**
+     * 存储只实现 StorageInterface（无 SSO 便捷方法）时走降级分支：
+     * 黑名单必须带上「access + refresh 全窗口」的 TTL，否则条目先于令牌过期，被踢令牌会复活。
+     */
+    public function testSsoFallbackRevocationCoversFullTokenLifetime(): void
+    {
+        $plain = new RecordingPlainStorage(new MemoryStorage(['limit' => 1000]));
+        $guard = $this->ssoGuardWith($plain);
+
+        $guard->issue($this->payloadWithJti('jti_old_first'));
+        $guard->issue($this->payloadWithJti('jti_new_second'));
+
+        self::assertArrayHasKey('jti_old_first', $plain->blacklistTtl, '降级分支必须拉黑旧令牌');
+        self::assertSame(
+            3600 + 604800,
+            $plain->blacklistTtl['jti_old_first'],
+            '黑名单 TTL 需覆盖 ttl + refresh_ttl，而不是退回默认 3600'
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $overrides
+     */
+    private function ssoGuardWith(StorageInterface $storage, array $overrides = []): SsoGuard
+    {
+        $config = array_merge([
+            'algo' => 'HS256',
+            'secret' => 'sso_policy_unit_secret',
+            'ttl' => 3600,
+            'ttl_unit' => 'seconds',
+            'refresh_enabled' => true,
+            'refresh_ttl' => 604800,
+            'refresh_ttl_unit' => 'seconds',
+            'blacklist_enabled' => true,
+            'platform' => 'web',
+        ], $overrides);
+
+        return new SsoGuard(
+            $storage,
+            new Builder($config),
+            new Parser($config),
+            new EventDispatcher(),
+            null,
+            $config
+        );
+    }
+
+    private function payloadWithJti(string $jti): Payload
+    {
+        $now = time();
+
+        return new Payload(
+            uid: 4242,
+            username: 'sso_user',
+            platform: 'web',
+            exp: $now + 3600,
+            iat: $now,
+            jti: $jti
+        );
+    }
+}
+
+/**
+ * 只暴露通用 StorageInterface 能力的存储替身（内部委托 MemoryStorage），
+ * 用于驱动 SsoGuard 的降级分支并记录 blacklist() 实际收到的 TTL。
+ */
+final class RecordingPlainStorage implements StorageInterface
+{
+    /** @var array<string, int> jti => 拉黑时传入的 TTL */
+    public array $blacklistTtl = [];
+
+    public function __construct(private readonly MemoryStorage $inner)
+    {
+    }
+
+    public function set(string $key, mixed $value, int $ttl = 0): bool
+    {
+        return $this->inner->set($key, $value, $ttl);
+    }
+
+    public function get(string $key, mixed $default = null): mixed
+    {
+        return $this->inner->get($key, $default);
+    }
+
+    public function delete(string $key): bool
+    {
+        return $this->inner->delete($key);
+    }
+
+    public function has(string $key): bool
+    {
+        return $this->inner->has($key);
+    }
+
+    public function setMultiple(array $values, int $ttl = 0): bool
+    {
+        return $this->inner->setMultiple($values, $ttl);
+    }
+
+    public function getMultiple(array $keys, mixed $default = null): array
+    {
+        return $this->inner->getMultiple($keys, $default);
+    }
+
+    /**
+     * @param array<int, string> $keys
+     */
+    public function deleteMultiple(array $keys): bool
+    {
+        return $this->inner->deleteMultiple($keys);
+    }
+
+    public function getStats(): array
+    {
+        return $this->inner->getStats();
+    }
+
+    public function blacklist(string $jti, int $ttl = 3600): bool
+    {
+        $this->blacklistTtl[$jti] = $ttl;
+
+        return $this->inner->blacklist($jti, $ttl);
+    }
+
+    public function isBlacklisted(string $jti): bool
+    {
+        return $this->inner->isBlacklisted($jti);
+    }
+
+    public function removeFromBlacklist(string $jti): bool
+    {
+        return $this->inner->removeFromBlacklist($jti);
+    }
+
+    public function cleanExpired(): bool|int
+    {
+        return $this->inner->cleanExpired();
+    }
+
+    public function touch(string $key, int $ttl): bool
+    {
+        return $this->inner->touch($key, $ttl);
+    }
+
+    public function getRemainingTtl(string $key): int
+    {
+        return $this->inner->getRemainingTtl($key);
+    }
+
+    public function clear(): bool
+    {
+        return $this->inner->clear();
     }
 }

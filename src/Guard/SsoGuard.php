@@ -42,9 +42,14 @@ class SsoGuard extends BaseGuard
      *
      * 优先使用 SsoStorageInterface 的 getSsoMapping / atomicRevoke；
      * 降级到通用 storage->get + blacklist。
+     * 置 single_login=false 可关闭旧会话踢出（默认开：SSO 守卫的核心语义）。
      */
     public function isUnique(string $uid, string $platform): bool
     {
+        if (!($this->config['single_login'] ?? true)) {
+            return true;
+        }
+
         $ssoKey = "sso:{$uid}:{$platform}";
         $existing = $this->storage instanceof SsoStorageInterface
             ? $this->storage->getSsoMapping($uid, $platform)
@@ -55,11 +60,13 @@ class SsoGuard extends BaseGuard
         }
 
         $jti = (string) $existing;
+        // 被踢令牌的最长剩余寿命 = ttl + refresh_ttl；黑名单必须覆盖到那时，
+        // 否则条目先于令牌过期，旧 token 会在窗口内"复活"
+        $ttl = max(1, $this->getTtlSeconds() + $this->getRefreshTtlSeconds());
         if ($this->storage instanceof SsoStorageInterface) {
-            $ttl = $this->getTtlSeconds() + $this->getRefreshTtlSeconds();
-            $this->storage->atomicRevoke($jti, $uid, $platform, max(1, $ttl));
+            $this->storage->atomicRevoke($jti, $uid, $platform, $ttl);
         } else {
-            $this->storage->blacklist($jti);
+            $this->storage->blacklist($jti, $ttl);
             $this->storage->delete($ssoKey);
         }
 
