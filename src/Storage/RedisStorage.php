@@ -48,6 +48,20 @@ class RedisStorage implements SsoStorageInterface
         return count
     LUA;
 
+    /**
+     * 用户活跃 Token 列表键的后缀（trackUserToken 写、TokenManager/BaseGuard 读）。
+     *
+     * 列表用 LPUSH 写成原生 LIST（保住原子性与 50 条封顶），但 GET 一个 LIST 键
+     * 是 WRONGTYPE：phpredis 既不告警也不抛异常，直接返回 false
+     * （实测 PHP 8.3 + phpredis 6：GET => false，TYPE => 3）。于是读取方
+     * （TokenManager::revokeTokensFromList / collectPlatformTokens、
+     * BaseGuard::getUserActiveTokens）恒看到空列表，
+     * 「按 uid 撤销该用户全部令牌」在 redis 驱动上彻底空转，只报 0 条。
+     * memory/file 两个实现把同一个键当普通值读写，所以契约以它们为准：
+     * get(列表键) 必须返回 jti 数组。
+     */
+    private const TOKEN_LIST_SUFFIX = ':tokens';
+
     /** @var Redis Redis 实例 */
     protected Redis $redis;
     /** @var string 键前缀 */
@@ -140,6 +154,15 @@ class RedisStorage implements SsoStorageInterface
     public function get(string $key, mixed $default = null): mixed
     {
         $key = $this->getKey($key);
+
+        if (str_ends_with($key, self::TOKEN_LIST_SUFFIX)) {
+            $list = $this->redis->lRange($key, 0, -1);
+            if (is_array($list)) {
+                return $list;
+            }
+            // 不是 LIST（例如别处用 set() 落成 JSON 串的同名键）：继续走普通 GET
+        }
+
         $value = $this->redis->get($key);
 
         if ($value === false) {
@@ -317,6 +340,9 @@ class RedisStorage implements SsoStorageInterface
     public function trackUserToken(string $uid, string $platform, string $jti, int $ttl = 0): bool
     {
         $key = $this->getKey("user:{$uid}:{$platform}:tokens");
+        // 同一 JTI 只留一份（与 memory/file/database 的 array_unique 同口径）：
+        // 否则重复令牌会让撤销做无用功，列表也被同一条占掉多个位置。
+        $this->redis->lRem($key, $jti, 0);
         $this->redis->lPush($key, $jti);
         // 仅保留最近的 50 条以避免列表无限增长
         $this->redis->lTrim($key, 0, 49);

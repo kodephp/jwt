@@ -1554,7 +1554,7 @@ interface SsoStorageInterface extends StorageInterface
     /** 原子化撤销（黑名单 + SSO 清理 + 用户列表清理 + 详情清理） */
     public function atomicRevoke(string $jti, string $uid, string $platform, int $ttl = 3600): int;
 
-    /** 记录到用户活跃 Token 列表（最多保留 50 条） */
+    /** 记录到用户活跃 Token 列表（最多保留 50 条，同一 JTI 只留一份，新条目在前） */
     public function trackUserToken(string $uid, string $platform, string $jti, int $ttl = 0): bool;
 
     /** 设置 SSO 平台 → JTI 映射 */
@@ -1564,6 +1564,14 @@ interface SsoStorageInterface extends StorageInterface
     public function getSsoMapping(string $uid, string $platform): ?string;
 }
 ```
+
+> **读写同型（v1.14.1 起在契约里写明）**：`user:{uid}:{platform}:tokens` 这个键的存储结构由实现自选
+> （redis 用原生 LIST 以保住原子性和 50 条封顶，memory/file 用普通值），但对外的读法只有一个：
+> `StorageInterface::get(同一个键)` 必须原样读回 jti 数组。
+> redis 侧 GET 打在 LIST 键上是 WRONGTYPE，phpredis 不告警也不抛错、直接返回 `false`
+> （实测 PHP 8.3 + phpredis 6），于是 `revokeUserTokens()` / `getUserActiveTokens()` 恒查 0 条——
+> 强制下线点了没反应，接口照样回 200。`RedisStorage::get()` 现在按键名后缀改发 `LRANGE`，
+> 键不是 LIST 时退回普通 `GET`（历史数据兼容）。自定义存储请照同一条契约实现。
 
 ### 业务代码推荐写法
 
@@ -1647,7 +1655,7 @@ if ($storage instanceof SsoStorageInterface) {
 | `kode:jwt:blacklist:{jti}` | 注销/封禁的 JTI 集合 | `exp + refresh_ttl` |
 | `kode:jwt:token:{jti}` | Token 详细快照（uid、平台、过期时间等） | `exp - now` |
 | `kode:jwt:sso:{uid}:{platform}` | SSO 平台→JTI 映射 | `exp + refresh_ttl` |
-| `kode:jwt:user:{uid}:{platform}:tokens` | 用户活跃 Token 列表（最近 50 条） | `exp + refresh_ttl` |
+| `kode:jwt:user:{uid}:{platform}:tokens` | 用户活跃 Token 列表（最近 50 条，同一 JTI 只留一份；redis 侧为 LIST，读走 `LRANGE`） | `exp + refresh_ttl` |
 | `kode:jwt:replay:nonce:{jti}:{nonce}` | 防重放 Nonce 一次性消费标记 | `exp - now` |
 | `kode:jwt:replay:window:{jti}` | 滑动窗口访问轨迹（ZSet） | 窗口大小 |
 

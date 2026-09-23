@@ -53,7 +53,13 @@ interface SsoStorageInterface extends StorageInterface
     /**
      * 记录到用户活跃 Token 列表
      *
-     * 列表默认仅保留最近 50 条以避免无限增长。
+     * 列表默认仅保留最近 50 条以避免无限增长，同一 JTI 只留一份、新条目在前。
+     *
+     * 读写必须同型：这个键由实现自己决定用什么结构存（redis 用原生 LIST，
+     * memory/file 用普通值），但 StorageInterface::get(同一个键) 必须能原样读回
+     * jti 数组。读取方（TokenManager::revokeTokensFromList、
+     * BaseGuard::getUserActiveTokens）只走通用 get()，读不回数组时
+     * 「按 uid 撤销全部令牌」会静默空转并回报 0 条。
      *
      * @param string $uid      用户 ID
      * @param string $platform 平台标识
