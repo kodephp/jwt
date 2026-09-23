@@ -1,10 +1,17 @@
 # Kode JWT：一个健壮、全面、现代化的 PHP 8.3+ JWT 包
 
 > **项目名称**：`kode/jwt`  
-> **当前版本**：`v1.12.0`  
+> **当前版本**：`v1.14.0`  
 > **目标**：为现代 PHP 应用提供安全、灵活、高性能的 JWT 身份验证解决方案，支持单点登录（SSO）、多点登录、黑名单管理、自动续期、多平台适配、防重放攻击（Anti-Replay）、JWK 密钥管理、Token 客户端指纹绑定、JWKS 端点发布、Token Introspection、OIDC Discovery，兼容 FPM、Swoole、RoadRunner 等运行环境。
 
 ---
+
+
+## 版本自述
+
+本包版本可由类常量核对：`Kode\Jwt\KodeJwt::VERSION`，或调用 `KodeJwt::version()`（当前 `1.14.0`）。
+
+`composer.json` 的 `version` 字段是 composer 侧的权威值，类常量是它的交叉核对副本——`tests/VersionGuardTest.php` 在两者不一致时直接失败，杜绝「tag 打了、常量忘改」的漂移。
 
 ## 📌 项目愿景
 
