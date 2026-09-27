@@ -195,45 +195,81 @@ class TokenManager implements TokenManagerInterface
     /**
      * 强制注销用户的所有Token
      *
+     * 往返预算是这一枚方法的契约：它是账号处置的唯一下线口（禁用账号、禁用/删除角色、
+     * 会话页那颗「清理过期会话」都调它），而调用方是在一个批次里逐账号问的。
+     * 旧写法对每个平台各发一次 `get()`、再把清单里每枚 jti 各问一次详情，
+     * 于是「一次点击」= 账号数 ×（平台数 + 令牌数）次串行往返 —— 结果全对、一个错都不报，
+     * 慢的那部分只体现在 worker 被按住多久上（回归见 tests/RevokeBatchReadTest.php）。
+     * 现在清单一次批量读、详情一次批量读、清单一次批量删。
+     *
      * @param string $uid 用户ID
      * @param string|null $platform 平台标识（可选）
      * @return int 被注销的Token数量
      */
     public function revokeUserTokens(string $uid, ?string $platform = null): int
     {
-        if ($platform) {
-            // 注销指定平台的Token
-            return $this->revokeTokensFromList($uid, $platform);
+        $platforms = ($platform === null || $platform === '')
+            ? array_values(array_filter(
+                (array) $this->config->get('platforms', []),
+                static fn(mixed $p): bool => is_string($p) && $p !== ''
+            ))
+            : [$platform];
+
+        if ($platforms === []) {
+            return 0;
         }
 
-        // 注销所有平台的Token
-        $revokedCount = 0;
-        foreach ($this->config->get('platforms', []) as $plat) {
-            $revokedCount += $this->revokeTokensFromList($uid, $plat);
+        $listKeys = [];
+        foreach ($platforms as $plat) {
+            $listKeys[] = "user:{$uid}:{$plat}:tokens";
         }
+
+        $lists = $this->storage->getMultiple($listKeys, []);
+
+        $detailKeys = [];
+        foreach ($listKeys as $key) {
+            foreach ((array) ($lists[$key] ?? []) as $jti) {
+                if (is_string($jti) && $jti !== '') {
+                    $detailKeys["token:{$jti}"] = true;
+                }
+            }
+        }
+
+        $details = $detailKeys === []
+            ? []
+            : $this->storage->getMultiple(array_keys($detailKeys), []);
+
+        $revokedCount = 0;
+        foreach ($listKeys as $key) {
+            $revokedCount += $this->revokeList((array) ($lists[$key] ?? []), $details);
+        }
+
+        // 清单一次批量删（逐平台 delete() 又是要省掉的那一圈往返）
+        $this->storage->deleteMultiple($listKeys);
 
         return $revokedCount;
     }
 
     /**
-     * 注销指定用户在指定平台下的所有Token
+     * 注销一枚清单里的所有 Token。
      *
-     * 抽取自 revokeUserTokens()，统一处理单个平台的Token注销逻辑：
+     * 详情由调用方一次批量读好后传进来（理由见 revokeUserTokens 的往返预算）。
      * 优先通过 guard->invalidate() 注销完整Token，无法获取原始Token时
-     * 退化为按 jti 加入黑名单。
+     * 退化为按 jti 加入黑名单 —— 缺详情不等于没撤销，那一枚必须照样进黑名单。
      *
-     * @param string $uid 用户ID
-     * @param string $platform 平台标识
+     * @param array<mixed> $tokenIds
+     * @param array<string, mixed> $details 以 token:{jti} 为键
      * @return int 被注销的Token数量
      */
-    private function revokeTokensFromList(string $uid, string $platform): int
+    private function revokeList(array $tokenIds, array $details): int
     {
-        $key = "user:{$uid}:{$platform}:tokens";
-        $tokenIds = $this->storage->get($key) ?? [];
-
         $revokedCount = 0;
         foreach ($tokenIds as $jti) {
-            $tokenData = $this->storage->get("token:{$jti}");
+            if (!is_string($jti) || $jti === '') {
+                continue;
+            }
+
+            $tokenData = $details["token:{$jti}"] ?? null;
             if (is_array($tokenData) && isset($tokenData['token']) && is_string($tokenData['token'])) {
                 // 优先通过完整Token执行注销流程
                 $revoked = $this->guard->invalidate($tokenData['token']);
@@ -249,9 +285,6 @@ class TokenManager implements TokenManagerInterface
                 $revokedCount++;
             }
         }
-
-        // 清空Token列表
-        $this->storage->delete($key);
 
         return $revokedCount;
     }

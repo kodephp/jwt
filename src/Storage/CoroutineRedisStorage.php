@@ -47,9 +47,6 @@ class CoroutineRedisStorage implements SsoStorageInterface
         return count
     LUA;
 
-    /** 用户活跃 Token 列表键后缀（与 RedisStorage 同口径，读写必须同型）。 */
-    private const TOKEN_LIST_SUFFIX = ':tokens';
-
     /** @var \Swoole\Coroutine\Redis 协程 Redis 实例 */
     protected object $redis;
     /** @var string 键前缀 */
@@ -153,9 +150,9 @@ class CoroutineRedisStorage implements SsoStorageInterface
     {
         $key = $this->getKey($key);
 
-        // 用户活跃 Token 列表是原生 LIST（见 RedisStorage::TOKEN_LIST_SUFFIX），
+        // 用户活跃 Token 列表是原生 LIST（见 TokenListKey），
         // 对它发 GET 只会拿到 false，读取方据此认为「该用户没有令牌」。
-        if (str_ends_with($key, self::TOKEN_LIST_SUFFIX)) {
+        if (TokenListKey::isListKey($key)) {
             $list = $this->redis->lRange($key, 0, -1);
             if (is_array($list)) {
                 return $list;

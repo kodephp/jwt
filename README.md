@@ -1,7 +1,7 @@
 # Kode JWT：一个健壮、全面、现代化的 PHP 8.3+ JWT 包
 
 > **项目名称**：`kode/jwt`  
-> **当前版本**：`v1.14.0`  
+> **当前版本**：`v1.15.0`  
 > **目标**：为现代 PHP 应用提供安全、灵活、高性能的 JWT 身份验证解决方案，支持单点登录（SSO）、多点登录、黑名单管理、自动续期、多平台适配、防重放攻击（Anti-Replay）、JWK 密钥管理、Token 客户端指纹绑定、JWKS 端点发布、Token Introspection、OIDC Discovery，兼容 FPM、Swoole、RoadRunner 等运行环境。
 
 ---
@@ -9,7 +9,7 @@
 
 ## 版本自述
 
-本包版本可由类常量核对：`Kode\Jwt\KodeJwt::VERSION`，或调用 `KodeJwt::version()`（当前 `1.14.0`）。
+本包版本可由类常量核对：`Kode\Jwt\KodeJwt::VERSION`，或调用 `KodeJwt::version()`（当前 `1.15.0`）。
 
 `composer.json` 的 `version` 字段是 composer 侧的权威值，类常量是它的交叉核对副本——`tests/VersionGuardTest.php` 在两者不一致时直接失败，杜绝「tag 打了、常量忘改」的漂移。
 
@@ -1011,6 +1011,99 @@ try {
 > - `examples/basic_usage.php` — 基础 + expected_claims 校验
 > - `examples/storage_usage.php` — 多存储 + SsoStorageInterface 增强
 > - `examples/advanced_usage.php` — 标准声明 + Nonce + 多签
+
+---
+
+## 🆕 v1.15.0 新特性：账号下线一次点完 —— 撤销链路的往返预算
+
+v1.15.0 不改任何对外语义，改的是**一次强制下线要问存储多少次**。
+`revokeUserTokens()` 是账号处置的唯一下线口（禁用账号、禁用/删除角色、会话页那颗
+「清理过期会话」都调它），而调用方是**在一个批次里逐账号问的**，所以它内部的串行往返
+会被账号数放大。旧写法对每个平台各发一次 `get()`，再把清单里每枚 jti 各问一次详情：
+
+```php
+// v1.14.1 及更早：7 个默认平台 = 7 次串行清单读，之后每枚令牌再一次详情读
+foreach ($platforms as $plat) {
+    $tokenIds = $this->storage->get("user:{$uid}:{$plat}:tokens") ?? [];
+    foreach ($tokenIds as $jti) {
+        $tokenData = $this->storage->get("token:{$jti}");   // N+1
+        // …
+    }
+}
+```
+
+结果全对、一个错都不报，慢的那部分只体现在 worker 被按住多久上（应用侧实测单账号
+1.119 ms × 7 平台往返，一万枚账号 ≈ 11 秒占住一枚 worker）。
+
+### 1. 撤销链路只剩两次批量读 + 一次批量删
+
+```php
+// 平台清单一次问完
+$lists = $this->storage->getMultiple($listKeys, []);
+
+// 把所有平台上列出的 jti 去重后，详情一次问完
+$details = $this->storage->getMultiple(array_keys($detailKeys), []);
+
+// 逐平台撤销（用上面问好的详情，不再回存储问）
+foreach ($listKeys as $key) {
+    $revokedCount += $this->revokeList((array) ($lists[$key] ?? []), $details);
+}
+
+// 清单一次删完
+$this->storage->deleteMultiple($listKeys);
+```
+
+**往返预算现在是契约**：一枚账号的撤销恒为「清单一次批量读 + 详情一次批量读 + 清单一次批量删」，
+不随平台数与令牌数增长。`tests/RevokeBatchReadTest.php` 用一枚记录读法的存储替身钉住两侧
+—— 少于两次是「有哪一批压根没被问」，多于两次是「有循环退回逐枚问了」；
+另有正对照逐平台验**内容**（每枚令牌真的进了黑名单，逐平台撤销不越界动别的平台）。
+
+### 2. `RedisStorage::getMultiple()` 与 `get()` 同型（v1.14.1 那条契约的补齐）
+
+v1.14.1 只修了 `get()`：它按键名后缀把 `user:{uid}:{platform}:tokens` 改发 `LRANGE`，
+因为 GET 打在 LIST 键上是 WRONGTYPE、phpredis 不告警不抛错直接回 `false`。
+`getMultiple()` 当时没人碰，于是批量读这一面仍然把同一个键读成 `false`——
+**而"批量"恰恰是新代码要用的那一条**。现在两条线齐了：
+
+| 键的形状 | `get()` | `getMultiple()` |
+|---|---|---|
+| LIST（平台清单） | `LRANGE` | 管道 `LRANGE` |
+| 值是普通 STRING 的历史清单 | 退回 `GET` | 该槽退回 `MGET` |
+| 管道整体没成功（`exec()` 不返数组） | — | 逐枚回退 `get()` |
+| 键不存在 | `$default` | `$default` |
+
+出参的键集合**恒等于入参**（先按入参铺好位置再填），所以调用方拿不到「这一枚没问到」。
+`exec()` 失败时逐枚回退而不是返回空集，是因为把「一次都没读到」折成「这个账号没有令牌」
+正是 v1.14.1 修掉的那个坏法，换个入口不能让它回来
+（回归 `tests/RedisStorageTokenListTest.php`：同一个键集要求逐枚读与批量读**逐值相等**）。
+
+### 3. `:tokens` 的判定收到一个类里
+
+「这个键是不是用户令牌清单」原本在两个 redis 驱动里各写了一枚 private const，
+新增第三个驱动就会各写第三份。现在只有一份：
+
+```php
+use Kode\Jwt\Storage\TokenListKey;
+
+TokenListKey::isListKey('user:42:web:tokens');   // true
+TokenListKey::isListKey('token:abc');            // false
+TokenListKey::SUFFIX;                            // ':tokens'
+```
+
+自定义存储实现 `StorageInterface` 时，清单键的读写请走这同一个判据
+—— 判据分叉的后果就是上面那张表少一行，而它不报错。
+
+### 版本年表（README 里此前缺记的 v1.11.0 – v1.14.1）
+
+| 版本 | 一句话 |
+|---|---|
+| v1.11.0 | JWS 算法族 + DPoP / `cnf` 绑定 / Token 撤销 |
+| v1.12.0 | 黑名单完整生命周期 `revokeToken`/`revokeJti`/`isBlacklisted`/`unblacklist` |
+| v1.12.1 | `guard()` 未知守卫名改为抛异常，不再静默回落 `api` 配置 |
+| v1.13.0 | 刷新声明继承、SSO 踢出时效、黑名单容量上限 |
+| v1.14.0 | 版本自述面 `KodeJwt::VERSION` + `version()` + 防漂移守卫 |
+| v1.14.1 | redis 驱动用户令牌列表**读写同型**，强制下线不再空转 |
+| v1.15.0 | 撤销链路的往返预算 + `getMultiple()` 同型 + `TokenListKey` |
 
 ---
 

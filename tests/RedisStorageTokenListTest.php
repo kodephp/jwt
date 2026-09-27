@@ -8,6 +8,7 @@ use Kode\Jwt\Storage\MemoryStorage;
 use Kode\Jwt\Storage\RedisStorage;
 use PHPUnit\Framework\TestCase;
 use Redis;
+use RedisException;
 
 /**
  * `user:{uid}:{platform}:tokens` 的读写必须同型。
@@ -59,10 +60,19 @@ final class RedisStorageTokenListTest extends TestCase
 
         $redis = new Redis();
         $redis->connect($host, $port, 1.0);
-        if ($password !== '') {
-            $redis->auth($password);
+        try {
+            if ($password !== '') {
+                $redis->auth($password);
+            }
+            $redis->select($database);
+        } catch (RedisException $e) {
+            // 「端口开着」和「这扇门锁着」是两件事。上面那枚 fsockopen 只问到端口，
+            // 于是要求鉴权的 redis 会让整个文件以 7 条 NOAUTH error 收场 ——
+            // 看着像被测代码坏了，真相只是没配 JWT_TEST_REDIS_PASSWORD。
+            $redis->close();
+            self::markTestSkipped("redis 拒绝握手（{$host}:{$port}）：{$e->getMessage()}"
+                . ($password === '' ? '；这台 redis 要求鉴权，请配 JWT_TEST_REDIS_PASSWORD' : ''));
         }
-        $redis->select($database);
         $this->raw = $redis;
     }
 
@@ -167,6 +177,60 @@ final class RedisStorageTokenListTest extends TestCase
         $ttl = (int) $this->raw->ttl($key);
         self::assertGreaterThan(0, $ttl, 'TTL 应已设置（-1 表示键永不过期）');
         self::assertLessThanOrEqual(120, $ttl);
+    }
+
+    /**
+     * 批量读必须与单读**同型**，否则「把七次 get() 合成一次 getMultiple()」
+     * 这个优化会在 redis 上原样重犯上面那条 WRONGTYPE 故障：
+     * mget 打在 LIST 键上同样是 WRONGTYPE、同样静默返回 false。
+     *
+     * 三种键各一枚，缺一种都算没过：
+     * - 原生 LIST 的清单键（trackUserToken 的真实落点）
+     * - 压根不存在的键（批量读不能因为少一枚就把整批判废）
+     * - 历史/别处用 set() 落成的同名片键（同 testNonListTokensKeyFallsBackToPlainGet）
+     */
+    public function testGetMultipleIsSameShapedAsGetForTokenListKeys(): void
+    {
+        $storage = $this->storage();
+        $memory = new MemoryStorage();
+
+        $list = 'user:4245:web:tokens';
+        $storage->trackUserToken('4245', 'web', 'jti_a', 3600);
+        $storage->trackUserToken('4245', 'web', 'jti_b', 3600);
+        $memory->trackUserToken('4245', 'web', 'jti_a', 3600);
+        $memory->trackUserToken('4245', 'web', 'jti_b', 3600);
+        // 门面这一层的键由驱动内部加前缀，用例全程只问门面
+        $this->rawKeys[] = $this->prefix . $list;
+
+        $legacy = 'user:4246:web:tokens';
+        self::assertTrue($storage->set($legacy, ['jti_legacy'], 3600));
+        self::assertTrue($memory->set($legacy, ['jti_legacy'], 3600));
+        $this->rawKeys[] = $this->prefix . $legacy;
+
+        $missing = 'user:4247:web:tokens';
+
+        $keys = [$list, $legacy, $missing];
+        $batched = $storage->getMultiple($keys, []);
+        $singles = [];
+        foreach ($keys as $key) {
+            $singles[$key] = $storage->get($key, []);
+        }
+
+        self::assertSame(
+            array_values($singles),
+            array_values($batched),
+            'redis：getMultiple 的每个位置必须与 get() 逐个同值（列表读不回就是 v1.14.1 那一刀）'
+        );
+        self::assertSame(
+            ['jti_b', 'jti_a'],
+            array_values((array) $batched[$list]),
+            'LIST 那一枚必须真读出两条 jti，而不是 false/空'
+        );
+        self::assertSame(
+            array_values($memory->getMultiple($keys, [])),
+            array_values($batched),
+            '两个驱动对同一批键必须给出同一份值'
+        );
     }
 
     /**

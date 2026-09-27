@@ -1,7 +1,7 @@
 # Kode JWT: A Robust, Comprehensive, Modern PHP 8.3+ JWT Package
 
 > **Project Name**: `kode/jwt`
-> **Current Version**: `v1.10.0`
+> **Current Version**: `v1.15.0`
 > **Goal**: Provide a secure, flexible, high-performance JWT authentication solution for modern PHP applications, supporting Single Sign-On (SSO), Multi-Login, blacklist management, automatic renewal, multi-platform adaptation, Anti-Replay, JWK key management (RFC 7517), Token client fingerprint binding, JWKS endpoint publishing (RFC 7517 §5), Token Introspection (RFC 7662), OIDC Discovery (RFC 8414), and compatibility with FPM, Swoole, RoadRunner, and other runtime environments.
 
 ---
@@ -741,6 +741,59 @@ parameters:
 /** @method static string issue(\Kode\Jwt\Token\Payload $payload) */
 class KodeJwt {}
 ```
+
+---
+
+## 🆕 v1.14.1 – v1.15.0: Force-logout actually reaches storage
+
+The two most recent releases fix the same thing seen from two sides: **a batch read must not
+lie about what it did not read**, and **revoking an account must not cost one round-trip per
+token**.
+
+### v1.14.1 — Redis list keys are read as lists
+
+`user:{uid}:{platform}:tokens` is a native Redis LIST (LPUSH keeps the 50-entry cap atomic),
+but `GET` on a LIST key is `WRONGTYPE`, and phpredis neither warns nor throws — it returns
+`false`. So `revokeUserTokens()` and `getUserActiveTokens()` found zero tokens, the
+force-logout button did nothing, and the endpoint still answered 200. `RedisStorage::get()`
+now switches to `LRANGE` for those keys and falls back to `GET` when the value is a legacy
+plain string. The contract is documented under `SsoStorageInterface`: whatever shape a driver
+picks internally, `get()` on the same key must return the jti array back.
+
+### v1.15.0 — the revoke path has a round-trip budget, and it is part of the contract
+
+Revoke is the single off-boarding entry point (disabling an account, disabling or deleting a
+role, and the "sweep expired sessions" button all call it), and callers loop it per account —
+so its internal serial round-trips get multiplied by the account count. Previously each of the
+7 default platforms cost one `get()` for the list plus one `get()` per token.
+`revokeUserTokens()` now does exactly **two batched reads and one batched delete per account**:
+
+```php
+$lists   = $storage->getMultiple($listKeys, []);            // all platforms at once
+$details = $storage->getMultiple(array_keys($detailKeys), []); // all jtis, deduped
+foreach ($listKeys as $key) { $revoked += $this->revokeList(...); }
+$storage->deleteMultiple($listKeys);                        // all lists at once
+```
+
+`RedisStorage::getMultiple()` was also made **the same shape as `get()`**: list keys go
+through a pipelined `LRANGE`, a slot that is not a LIST falls back to `MGET`, and if the
+pipeline itself fails each key retries through `get()` — because collapsing "read nothing"
+into "this account has no tokens" is exactly the v1.14.1 bug, and it must not come back
+through the batch door. The result's key set always equals the input's.
+
+Whether a key is a token list is now decided in one place, `Kode\Jwt\Storage\TokenListKey`:
+
+```php
+TokenListKey::isListKey('user:42:web:tokens');  // true
+TokenListKey::SUFFIX;                           // ':tokens'
+```
+
+Custom `StorageInterface` implementations should use the same predicate — a diverging
+predicate means one row of the table above silently goes missing, and nothing reports it.
+Regression coverage: `tests/RevokeBatchReadTest.php` (asserts both directions of the budget:
+fewer than two batched reads means a batch was never asked for, more means a loop went
+per-token) and `tests/RedisStorageTokenListTest.php` (per-key and batched reads must agree
+value-for-value on the same key set).
 
 ---
 

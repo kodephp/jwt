@@ -48,20 +48,6 @@ class RedisStorage implements SsoStorageInterface
         return count
     LUA;
 
-    /**
-     * 用户活跃 Token 列表键的后缀（trackUserToken 写、TokenManager/BaseGuard 读）。
-     *
-     * 列表用 LPUSH 写成原生 LIST（保住原子性与 50 条封顶），但 GET 一个 LIST 键
-     * 是 WRONGTYPE：phpredis 既不告警也不抛异常，直接返回 false
-     * （实测 PHP 8.3 + phpredis 6：GET => false，TYPE => 3）。于是读取方
-     * （TokenManager::revokeTokensFromList / collectPlatformTokens、
-     * BaseGuard::getUserActiveTokens）恒看到空列表，
-     * 「按 uid 撤销该用户全部令牌」在 redis 驱动上彻底空转，只报 0 条。
-     * memory/file 两个实现把同一个键当普通值读写，所以契约以它们为准：
-     * get(列表键) 必须返回 jti 数组。
-     */
-    private const TOKEN_LIST_SUFFIX = ':tokens';
-
     /** @var Redis Redis 实例 */
     protected Redis $redis;
     /** @var string 键前缀 */
@@ -155,7 +141,7 @@ class RedisStorage implements SsoStorageInterface
     {
         $key = $this->getKey($key);
 
-        if (str_ends_with($key, self::TOKEN_LIST_SUFFIX)) {
+        if (TokenListKey::isListKey($key)) {
             $list = $this->redis->lRange($key, 0, -1);
             if (is_array($list)) {
                 return $list;
@@ -163,16 +149,7 @@ class RedisStorage implements SsoStorageInterface
             // 不是 LIST（例如别处用 set() 落成 JSON 串的同名键）：继续走普通 GET
         }
 
-        $value = $this->redis->get($key);
-
-        if ($value === false) {
-            return $default;
-        }
-
-        $unserializedValue = json_decode($value, true);
-
-        // 如果JSON解码失败，返回原始值
-        return $unserializedValue === null ? $value : $unserializedValue;
+        return $this->decode($this->redis->get($key), $default);
     }
 
     /**
@@ -238,28 +215,108 @@ class RedisStorage implements SsoStorageInterface
     /**
      * 批量获取键值对
      *
-     * @param array<string> $keys 键数组
+     * 与 `get()` **同型**是这一枚方法的契约：调用方（`TokenManager::revokeUserTokens()`）
+     * 就是把「逐枚 `get()`」换成「一次 `getMultiple()`」来省往返的，如果清单键在这里
+     * 读不回列表，那次优化会原样重犯 v1.14.1 的故障（强制下线空转、接口照回 200）。
+     *
+     * 两种键分开问：
+     * - 普通键一次 `MGET`；
+     * - `:tokens` 清单键一次 pipeline 的 `LRANGE`（`MGET` 对 LIST 与 `GET` 一样是
+     *   WRONGTYPE、一样静默回 false）；其中读到 false 的那些再退回 `MGET`，
+     *   与 `get()` 的「不是 LIST 就按普通值读」同一方向。
+     *
+     * @param array<int, string> $keys 键数组
      * @param mixed $default 默认值
      * @return array<string, mixed>
      */
     public function getMultiple(array $keys, mixed $default = null): array
     {
-        $redisKeys = array_map([$this, 'getKey'], $keys);
-        $values = $this->redis->mget($redisKeys);
+        $keys = array_values($keys);
 
-        $results = [];
-        foreach ($keys as $i => $key) {
-            $value = $values[$i];
+        // 先按入参铺好位置：无论后面哪一批问成什么样，出参的键集合恒等于入参
+        $results = array_fill_keys($keys, $default);
 
-            if ($value === false) {
-                $results[$key] = $default;
+        $lists = [];
+        $plain = [];
+        foreach ($keys as $key) {
+            if (TokenListKey::isListKey($key)) {
+                $lists[] = $key;
             } else {
-                $unserializedValue = json_decode($value, true);
-                $results[$key] = $unserializedValue === null ? $value : $unserializedValue;
+                $plain[] = $key;
+            }
+        }
+
+        if ($plain !== []) {
+            $this->fillFromMget($plain, $default, $results);
+        }
+
+        if ($lists !== []) {
+            $pipe = $this->redis->multi(Redis::PIPELINE);
+            foreach ($lists as $key) {
+                $pipe->lRange($this->getKey($key), 0, -1);
+            }
+            $ranged = $pipe->exec();
+
+            if (!is_array($ranged)) {
+                // 批量读自身没成功：逐枚回退到 get()。
+                // 把「一次都没读到」折成「这个账号没有令牌」正是 v1.14.1 那句话的坏法。
+                foreach ($lists as $key) {
+                    $results[$key] = $this->get($key, $default);
+                }
+            } else {
+                $byGet = [];
+                foreach ($lists as $slot => $key) {
+                    $list = $ranged[$slot] ?? false;
+                    if (is_array($list)) {
+                        $results[$key] = $list;
+                        continue;
+                    }
+                    // 不是 LIST：与 get() 同方向，按普通值再问一次
+                    $byGet[] = $key;
+                }
+
+                if ($byGet !== []) {
+                    $this->fillFromMget($byGet, $default, $results);
+                }
             }
         }
 
         return $results;
+    }
+
+    /**
+     * 一次 `MGET` 把一批（已知不是清单的）键填进出参。
+     *
+     * @param array<int, string> $keys 待读的原始键（不带前缀）
+     * @param array<string, mixed> $results 出参，按引用填
+     */
+    private function fillFromMget(array $keys, mixed $default, array &$results): void
+    {
+        $values = $this->redis->mget(array_map([$this, 'getKey'], $keys));
+        if (!is_array($values)) {
+            $values = [];
+        }
+
+        foreach ($keys as $slot => $key) {
+            $results[$key] = $this->decode($values[$slot] ?? false, $default);
+        }
+    }
+
+    /**
+     * 把 redis 回来的字符串按 set() 的写入方式解回原值。
+     *
+     * `false` 是 redis 的「键不存在」，也是 WRONGTYPE 的落点；解码失败时返回原始串，
+     * 与 `get()` 完全一致。
+     */
+    private function decode(mixed $value, mixed $default): mixed
+    {
+        if ($value === false) {
+            return $default;
+        }
+
+        $unserializedValue = json_decode((string) $value, true);
+
+        return $unserializedValue === null ? $value : $unserializedValue;
     }
 
     /**
