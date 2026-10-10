@@ -4177,3 +4177,7 @@ class CustomGuard implements GuardInterface
 - Amp
 
 ---
+
+## 许可证
+
+[Apache License 2.0](LICENSE)
