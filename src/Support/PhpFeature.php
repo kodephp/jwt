@@ -44,38 +44,6 @@ final class PhpFeature
     }
 
     /**
-     * 检测是否支持 readonly 类 (PHP 8.2+)
-     */
-    public static function supportsReadonlyClass(): bool
-    {
-        return version_compare(PHP_VERSION, '8.2.0', '>=');
-    }
-
-    /**
-     * 检测是否支持枚举 (PHP 8.1+)
-     */
-    public static function supportsEnum(): bool
-    {
-        return version_compare(PHP_VERSION, '8.1.0', '>=');
-    }
-
-    /**
-     * 检测是否支持 never 返回类型 (PHP 8.1+)
-     */
-    public static function supportsNeverType(): bool
-    {
-        return version_compare(PHP_VERSION, '8.1.0', '>=');
-    }
-
-    /**
-     * 检测是否支持 true/false/null 独立类型 (PHP 8.2+)
-     */
-    public static function supportsStandaloneTypes(): bool
-    {
-        return version_compare(PHP_VERSION, '8.2.0', '>=');
-    }
-
-    /**
      * 获取当前 PHP 版本信息
      */
     public static function getVersionInfo(): array
@@ -86,10 +54,10 @@ final class PhpFeature
             'minor' => PHP_MINOR_VERSION,
             'release' => PHP_RELEASE_VERSION,
             'features' => [
-                'enum' => self::supportsEnum(),
-                'readonly_class' => self::supportsReadonlyClass(),
-                'never_type' => self::supportsNeverType(),
-                'standalone_types' => self::supportsStandaloneTypes(),
+                'enum' => true,
+                'readonly_class' => true,
+                'never_type' => true,
+                'standalone_types' => true,
                 'pipe_operator' => self::supportsPipeOperator(),
                 'clone_with' => self::supportsCloneWith(),
                 'no_discard' => self::supportsNoDiscardAttribute(),

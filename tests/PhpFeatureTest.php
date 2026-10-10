@@ -9,28 +9,6 @@ use PHPUnit\Framework\TestCase;
 
 final class PhpFeatureTest extends TestCase
 {
-    public function testSupportsEnum(): void
-    {
-        self::assertTrue(PhpFeature::supportsEnum());
-    }
-
-    public function testSupportsNeverType(): void
-    {
-        self::assertTrue(PhpFeature::supportsNeverType());
-    }
-
-    public function testSupportsReadonlyClass(): void
-    {
-        $result = PhpFeature::supportsReadonlyClass();
-        self::assertIsBool($result);
-    }
-
-    public function testSupportsStandaloneTypes(): void
-    {
-        $result = PhpFeature::supportsStandaloneTypes();
-        self::assertIsBool($result);
-    }
-
     public function testSupportsPipeOperator(): void
     {
         $result = PhpFeature::supportsPipeOperator();
