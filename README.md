@@ -1,7 +1,7 @@
-# Kode JWT：一个健壮、全面、现代化的 PHP 8.3+ JWT 包
+# Kode JWT：一个健壮、全面、现代化的 PHP 8.4+ JWT 包
 
 > **项目名称**：`kode/jwt`  
-> **当前版本**：`v1.15.0`  
+> **当前版本**：`v2.0.0`  
 > **目标**：为现代 PHP 应用提供安全、灵活、高性能的 JWT 身份验证解决方案，支持单点登录（SSO）、多点登录、黑名单管理、自动续期、多平台适配、防重放攻击（Anti-Replay）、JWK 密钥管理、Token 客户端指纹绑定、JWKS 端点发布、Token Introspection、OIDC Discovery，兼容 FPM、Swoole、RoadRunner 等运行环境。
 
 ---
@@ -9,13 +9,13 @@
 
 ## 版本自述
 
-本包版本可由类常量核对：`Kode\Jwt\KodeJwt::VERSION`，或调用 `KodeJwt::version()`（当前 `1.15.0`）。
+本包版本可由类常量核对：`Kode\Jwt\KodeJwt::VERSION`，或调用 `KodeJwt::version()`（当前 `2.0.0`）。
 
 `composer.json` 的 `version` 字段是 composer 侧的权威值，类常量是它的交叉核对副本——`tests/VersionGuardTest.php` 在两者不一致时直接失败，杜绝「tag 打了、常量忘改」的漂移。
 
 ## 📌 项目愿景
 
-构建一个**生产级、零侵入、高可扩展**的 JWT 包，专为 PHP 8.3+ 设计，充分利用现代 PHP 特性（`readonly class`、类型化类常量、`json_validate()`、`#[\Override]` 属性、`enum`、联合类型、反射优化），并支持主流框架（Laravel、Symfony、ThinkPHP、Hyperf、EasySwoole 等）无缝接入。
+构建一个**生产级、零侵入、高可扩展**的 JWT 包，专为 PHP 8.4+ 设计，充分利用现代 PHP 特性（`readonly class`、类型化类常量、`json_validate()`、`#[\Override]` 属性、`enum`、联合类型、反射优化），并支持主流框架（Laravel、Symfony、ThinkPHP、Hyperf、EasySwoole 等）无缝接入。
 可使用 kode 相关包或其他通用适合的包快速集成。
 
 ---
@@ -24,7 +24,7 @@
 
 | 特性 | 说明 |
 |------|------|
-| ✅ **PHP 8.3+ 原生支持** | 使用 `readonly class`、类型化类常量（`private const array FOO = [...]`）、`json_validate()`、`#[\Override]` 属性等 PHP 8.3+ 特性 |
+| ✅ **PHP 8.4+ 原生支持** | 使用 `readonly class`、类型化类常量（`private const array FOO = [...]`）、`json_validate()`、`#[\Override]` 属性等 PHP 8.4+ 特性 |
 | ✅ **多平台支持** | H5、PC、App、小程序（微信/支付宝/抖音）等，通过 `platform` 声明区分，是否启用平台，平台配置一致或单独配置 |
 | ✅ **单点登录（SSO）** | 同一用户在同一平台仅允许一个有效 Token，支持 Redis Lua 原子化踢出 |
 | ✅ **多点登录（MLO）** | 支持同一用户在多个设备同时登录 |
@@ -1104,6 +1104,7 @@ TokenListKey::SUFFIX;                            // ':tokens'
 | v1.14.0 | 版本自述面 `KodeJwt::VERSION` + `version()` + 防漂移守卫 |
 | v1.14.1 | redis 驱动用户令牌列表**读写同型**，强制下线不再空转 |
 | v1.15.0 | 撤销链路的往返预算 + `getMultiple()` 同型 + `TokenListKey` |
+| v2.0.0 | 要求 PHP 8.4+；清理隐式可空参数（8.4 deprecation） |
 
 ---
 
@@ -1355,7 +1356,7 @@ $policy2 = \Kode\Jwt\Policy\TokenPolicy::fromArray($array);
 
 ---
 
-## 🆕 v1.9.0 新特性：PHP 8.3+ + JWK 模块 + Token 指纹 + 算法白名单
+## 🆕 v1.9.0 新特性：PHP 8.4+ + JWK 模块 + Token 指纹 + 算法白名单
 
 v1.9.0 是一次**主版本升级**，将最低 PHP 版本提升至 8.3+，引入 JWK 密钥管理、Token 客户端指纹绑定、算法白名单三层防御，并全面应用 PHP 8.3 现代化特性。
 
@@ -4156,7 +4157,7 @@ class CustomGuard implements GuardInterface
 
 ### 必需依赖
 
-- PHP >= 8.3
+- PHP >= 8.4
 - ext-json
 - ext-openssl
 
