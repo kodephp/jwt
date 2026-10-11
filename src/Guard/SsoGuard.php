@@ -44,6 +44,7 @@ class SsoGuard extends BaseGuard
      * 降级到通用 storage->get + blacklist。
      * 置 single_login=false 可关闭旧会话踢出（默认开：SSO 守卫的核心语义）。
      */
+    #[\Override]
     public function isUnique(string $uid, string $platform): bool
     {
         if (!($this->config['single_login'] ?? true)) {
@@ -83,6 +84,7 @@ class SsoGuard extends BaseGuard
      *
      * 优先使用 SsoStorageInterface 便捷方法；降级到通用 set。
      */
+    #[\Override]
     public function register(string $uid, string $platform, string $jti): void
     {
         $ttl = max(1, $this->getTtlSeconds() + $this->getRefreshTtlSeconds());

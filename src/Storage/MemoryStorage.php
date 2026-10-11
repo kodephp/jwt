@@ -32,6 +32,7 @@ class MemoryStorage implements SsoStorageInterface
         $this->blacklistLimit = max(1000, (int) ($config['blacklist_limit'] ?? self::DEFAULT_BLACKLIST_LIMIT));
     }
 
+    #[\Override]
     public function set(string $key, mixed $value, int $ttl = 0): bool
     {
         if (count($this->storage) >= $this->limit) {
@@ -46,6 +47,7 @@ class MemoryStorage implements SsoStorageInterface
         return true;
     }
 
+    #[\Override]
     public function get(string $key, mixed $default = null): mixed
     {
         if (!isset($this->storage[$key])) {
@@ -62,12 +64,14 @@ class MemoryStorage implements SsoStorageInterface
         return $item['value'];
     }
 
+    #[\Override]
     public function delete(string $key): bool
     {
         unset($this->storage[$key]);
         return true;
     }
 
+    #[\Override]
     public function has(string $key): bool
     {
         if (!isset($this->storage[$key])) {
@@ -84,6 +88,7 @@ class MemoryStorage implements SsoStorageInterface
         return true;
     }
 
+    #[\Override]
     public function setMultiple(array $values, int $ttl = 0): bool
     {
         foreach ($values as $key => $value) {
@@ -93,6 +98,7 @@ class MemoryStorage implements SsoStorageInterface
         return true;
     }
 
+    #[\Override]
     public function getMultiple(array $keys, mixed $default = null): array
     {
         $results = [];
@@ -104,6 +110,7 @@ class MemoryStorage implements SsoStorageInterface
         return $results;
     }
 
+    #[\Override]
     public function deleteMultiple(array $keys): bool
     {
         foreach ($keys as $key) {
@@ -113,6 +120,7 @@ class MemoryStorage implements SsoStorageInterface
         return true;
     }
 
+    #[\Override]
     public function blacklist(string $jti, int $ttl = 3600): bool
     {
         if (count($this->blacklist) >= $this->blacklistLimit) {
@@ -145,6 +153,7 @@ class MemoryStorage implements SsoStorageInterface
         }
     }
 
+    #[\Override]
     public function isBlacklisted(string $jti): bool
     {
         if (!isset($this->blacklist[$jti])) {
@@ -159,12 +168,14 @@ class MemoryStorage implements SsoStorageInterface
         return true;
     }
 
+    #[\Override]
     public function removeFromBlacklist(string $jti): bool
     {
         unset($this->blacklist[$jti]);
         return true;
     }
 
+    #[\Override]
     public function cleanExpired(): bool|int
     {
         $count = 0;
@@ -187,6 +198,7 @@ class MemoryStorage implements SsoStorageInterface
         return $count;
     }
 
+    #[\Override]
     public function getStats(): array
     {
         $this->cleanExpired();
@@ -199,6 +211,7 @@ class MemoryStorage implements SsoStorageInterface
         ];
     }
 
+    #[\Override]
     public function touch(string $key, int $ttl): bool
     {
         if (!isset($this->storage[$key])) {
@@ -216,6 +229,7 @@ class MemoryStorage implements SsoStorageInterface
         return true;
     }
 
+    #[\Override]
     public function getRemainingTtl(string $key): int
     {
         if (!isset($this->storage[$key])) {
@@ -232,6 +246,7 @@ class MemoryStorage implements SsoStorageInterface
         return $remaining > 0 ? $remaining : -2;
     }
 
+    #[\Override]
     public function clear(): bool
     {
         $this->storage = [];
@@ -244,6 +259,7 @@ class MemoryStorage implements SsoStorageInterface
      *
      * 内存环境下没有并发问题，可顺序执行：黑名单 → SSO 清理 → 用户列表清理。
      */
+    #[\Override]
     public function atomicRevoke(string $jti, string $uid, string $platform, int $ttl = 3600): int
     {
         $count = 0;
@@ -272,6 +288,7 @@ class MemoryStorage implements SsoStorageInterface
     /**
      * 记录到用户活跃 Token 列表
      */
+    #[\Override]
     public function trackUserToken(string $uid, string $platform, string $jti, int $ttl = 0): bool
     {
         $key = "user:{$uid}:{$platform}:tokens";
@@ -284,6 +301,7 @@ class MemoryStorage implements SsoStorageInterface
     /**
      * 设置 SSO 平台 → JTI 映射
      */
+    #[\Override]
     public function setSsoMapping(string $uid, string $platform, string $jti, int $ttl = 0): bool
     {
         return $this->set("sso:{$uid}:{$platform}", $jti, $ttl);
@@ -292,6 +310,7 @@ class MemoryStorage implements SsoStorageInterface
     /**
      * 获取 SSO 平台 → JTI 映射
      */
+    #[\Override]
     public function getSsoMapping(string $uid, string $platform): ?string
     {
         $value = $this->get("sso:{$uid}:{$platform}");

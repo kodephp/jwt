@@ -35,11 +35,13 @@ final class MonologAdapter implements LoggerInterface
         $this->logger->critical($message, $context);
     }
 
+    #[\Override]
     public function error(string $message, array $context = []): void
     {
         $this->logger->error($message, $context);
     }
 
+    #[\Override]
     public function warning(string $message, array $context = []): void
     {
         $this->logger->warning($message, $context);
@@ -50,11 +52,13 @@ final class MonologAdapter implements LoggerInterface
         $this->logger->notice($message, $context);
     }
 
+    #[\Override]
     public function info(string $message, array $context = []): void
     {
         $this->logger->info($message, $context);
     }
 
+    #[\Override]
     public function debug(string $message, array $context = []): void
     {
         $this->logger->debug($message, $context);

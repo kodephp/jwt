@@ -39,6 +39,7 @@ class MloGuard extends BaseGuard
     /**
      * 检查Token是否唯一（多点登录总是返回true）
      */
+    #[\Override]
     public function isUnique(string $uid, string $platform): bool
     {
         // 多点登录不需要检查唯一性
@@ -48,6 +49,7 @@ class MloGuard extends BaseGuard
     /**
      * 注册Token（多点登录不需要特殊处理）
      */
+    #[\Override]
     public function register(string $uid, string $platform, string $jti): void
     {
         $this->logger->debug('MLO 会话注册完成', ['uid' => $uid, 'platform' => $platform, 'jti' => $jti]);

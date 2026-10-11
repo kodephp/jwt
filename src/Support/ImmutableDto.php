@@ -53,6 +53,7 @@ abstract class ImmutableDto implements Arrayable
     /**
      * 转换为数组
      */
+    #[\Override]
     public function toArray(): array
     {
         $reflection = new \ReflectionClass($this);
@@ -78,6 +79,7 @@ abstract class ImmutableDto implements Arrayable
     /**
      * 从数组创建实例
      */
+    #[\Override]
     public static function fromArray(array $data): static
     {
         return new static(...$data);

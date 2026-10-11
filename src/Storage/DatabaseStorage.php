@@ -134,6 +134,7 @@ class DatabaseStorage implements SsoStorageInterface
      * @param int $ttl 过期时间（秒），0 表示永不过期
      * @return bool
      */
+    #[\Override]
     public function set(string $key, mixed $value, int $ttl = 0): bool
     {
         // 序列化值
@@ -164,6 +165,7 @@ class DatabaseStorage implements SsoStorageInterface
      * @param mixed $default 默认值
      * @return mixed
      */
+    #[\Override]
     public function get(string $key, mixed $default = null): mixed
     {
         // 概率触发过期清理，避免每次读都全表扫描
@@ -197,6 +199,7 @@ class DatabaseStorage implements SsoStorageInterface
      * @param string $key 键名
      * @return bool
      */
+    #[\Override]
     public function delete(string $key): bool
     {
         $sql = "DELETE FROM {$this->table} WHERE token_key = ?";
@@ -211,6 +214,7 @@ class DatabaseStorage implements SsoStorageInterface
      * @param string $key 键名
      * @return bool
      */
+    #[\Override]
     public function has(string $key): bool
     {
         // 概率触发过期清理，避免每次读都全表扫描
@@ -231,6 +235,7 @@ class DatabaseStorage implements SsoStorageInterface
      * @param int $ttl 黑名单保留时间（秒）
      * @return bool
      */
+    #[\Override]
     public function blacklist(string $jti, int $ttl = 3600): bool
     {
         $blacklistTable = $this->table . '_blacklist';
@@ -258,6 +263,7 @@ class DatabaseStorage implements SsoStorageInterface
      * @param string $jti JWT ID
      * @return bool
      */
+    #[\Override]
     public function isBlacklisted(string $jti): bool
     {
         // 概率触发过期清理，避免每次读都全表扫描
@@ -272,6 +278,7 @@ class DatabaseStorage implements SsoStorageInterface
         return $count > 0;
     }
 
+    #[\Override]
     public function removeFromBlacklist(string $jti): bool
     {
         $blacklistTable = $this->table . '_blacklist';
@@ -298,6 +305,7 @@ class DatabaseStorage implements SsoStorageInterface
      *
      * @return int 清理的记录数量
      */
+    #[\Override]
     public function cleanExpired(): int
     {
         // 清理过期的普通项
@@ -323,6 +331,7 @@ class DatabaseStorage implements SsoStorageInterface
      * @param int $ttl 过期时间（秒）
      * @return bool
      */
+    #[\Override]
     public function setMultiple(array $values, int $ttl = 0): bool
     {
         foreach ($values as $key => $value) {
@@ -340,6 +349,7 @@ class DatabaseStorage implements SsoStorageInterface
      * @param mixed $default 默认值
      * @return array<string, mixed>
      */
+    #[\Override]
     public function getMultiple(array $keys, mixed $default = null): array
     {
         $results = [];
@@ -355,6 +365,7 @@ class DatabaseStorage implements SsoStorageInterface
      * @param array<string> $keys 键数组
      * @return bool
      */
+    #[\Override]
     public function deleteMultiple(array $keys): bool
     {
         foreach ($keys as $key) {
@@ -370,6 +381,7 @@ class DatabaseStorage implements SsoStorageInterface
      *
      * @return array<string, mixed>
      */
+    #[\Override]
     public function getStats(): array
     {
         $sql = "SELECT COUNT(*) as count FROM {$this->table}";
@@ -397,6 +409,7 @@ class DatabaseStorage implements SsoStorageInterface
      * @param int $ttl 新的过期时间（秒），0 表示永不过期
      * @return bool
      */
+    #[\Override]
     public function touch(string $key, int $ttl): bool
     {
         $sql = "SELECT expires_at FROM {$this->table} WHERE token_key = ?";
@@ -431,6 +444,7 @@ class DatabaseStorage implements SsoStorageInterface
      * @param string $key 键名
      * @return int 剩余秒数，-2 表示键不存在，-1 表示永不过期
      */
+    #[\Override]
     public function getRemainingTtl(string $key): int
     {
         $sql = "SELECT expires_at FROM {$this->table} WHERE token_key = ?";
@@ -461,6 +475,7 @@ class DatabaseStorage implements SsoStorageInterface
      *
      * @return bool
      */
+    #[\Override]
     public function clear(): bool
     {
         $success = true;
@@ -504,6 +519,7 @@ class DatabaseStorage implements SsoStorageInterface
      * @param int    $ttl      黑名单保留时间（秒）
      * @return int 受影响键数量
      */
+    #[\Override]
     public function atomicRevoke(string $jti, string $uid, string $platform, int $ttl = 3600): int
     {
         $count = 0;
@@ -549,6 +565,7 @@ class DatabaseStorage implements SsoStorageInterface
      * @param int    $ttl      列表保留时间（秒）
      * @return bool
      */
+    #[\Override]
     public function trackUserToken(string $uid, string $platform, string $jti, int $ttl = 0): bool
     {
         $key = "user:{$uid}:{$platform}:tokens";
@@ -567,6 +584,7 @@ class DatabaseStorage implements SsoStorageInterface
      * @param int    $ttl      映射保留时间（秒）
      * @return bool
      */
+    #[\Override]
     public function setSsoMapping(string $uid, string $platform, string $jti, int $ttl = 0): bool
     {
         return $this->set("sso:{$uid}:{$platform}", $jti, $ttl);
@@ -579,6 +597,7 @@ class DatabaseStorage implements SsoStorageInterface
      * @param string $platform 平台标识
      * @return string|null JTI，不存在时返回 null
      */
+    #[\Override]
     public function getSsoMapping(string $uid, string $platform): ?string
     {
         $value = $this->get("sso:{$uid}:{$platform}");

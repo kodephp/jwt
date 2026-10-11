@@ -26,6 +26,7 @@ class NullStorage implements StorageInterface, SsoStorageInterface
      * @param int $ttl 过期时间（秒）
      * @return bool
      */
+    #[\Override]
     public function set(string $key, mixed $value, int $ttl = 0): bool
     {
         return true;
@@ -38,6 +39,7 @@ class NullStorage implements StorageInterface, SsoStorageInterface
      * @param mixed $default 默认值
      * @return mixed
      */
+    #[\Override]
     public function get(string $key, mixed $default = null): mixed
     {
         return $default;
@@ -49,6 +51,7 @@ class NullStorage implements StorageInterface, SsoStorageInterface
      * @param string $key 键名
      * @return bool
      */
+    #[\Override]
     public function delete(string $key): bool
     {
         return true;
@@ -60,6 +63,7 @@ class NullStorage implements StorageInterface, SsoStorageInterface
      * @param string $key 键名
      * @return bool
      */
+    #[\Override]
     public function has(string $key): bool
     {
         return false;
@@ -72,6 +76,7 @@ class NullStorage implements StorageInterface, SsoStorageInterface
      * @param int $ttl 过期时间（秒）
      * @return bool
      */
+    #[\Override]
     public function setMultiple(array $values, int $ttl = 0): bool
     {
         return true;
@@ -84,6 +89,7 @@ class NullStorage implements StorageInterface, SsoStorageInterface
      * @param mixed $default 默认值
      * @return array<string, mixed>
      */
+    #[\Override]
     public function getMultiple(array $keys, mixed $default = null): array
     {
         return array_fill_keys($keys, $default);
@@ -95,6 +101,7 @@ class NullStorage implements StorageInterface, SsoStorageInterface
      * @param array<string> $keys 键数组
      * @return bool
      */
+    #[\Override]
     public function deleteMultiple(array $keys): bool
     {
         return true;
@@ -107,6 +114,7 @@ class NullStorage implements StorageInterface, SsoStorageInterface
      * @param int $ttl 过期时间（秒）
      * @return bool
      */
+    #[\Override]
     public function blacklist(string $jti, int $ttl = 3600): bool
     {
         return true;
@@ -118,11 +126,13 @@ class NullStorage implements StorageInterface, SsoStorageInterface
      * @param string $jti Token ID
      * @return bool
      */
+    #[\Override]
     public function isBlacklisted(string $jti): bool
     {
         return false;
     }
 
+    #[\Override]
     public function removeFromBlacklist(string $jti): bool
     {
         return true;
@@ -133,6 +143,7 @@ class NullStorage implements StorageInterface, SsoStorageInterface
      *
  * @return bool
      */
+    #[\Override]
     public function cleanExpired(): bool
     {
         return true;
@@ -143,6 +154,7 @@ class NullStorage implements StorageInterface, SsoStorageInterface
      *
      * @return array<string, mixed>
      */
+    #[\Override]
     public function getStats(): array
     {
         return [
@@ -151,16 +163,19 @@ class NullStorage implements StorageInterface, SsoStorageInterface
         ];
     }
 
+    #[\Override]
     public function touch(string $key, int $ttl): bool
     {
         return true;
     }
 
+    #[\Override]
     public function getRemainingTtl(string $key): int
     {
         return -2;
     }
 
+    #[\Override]
     public function clear(): bool
     {
         return true;
@@ -169,6 +184,7 @@ class NullStorage implements StorageInterface, SsoStorageInterface
     /**
      * 空存储不实现原子化撤销
      */
+    #[\Override]
     public function atomicRevoke(string $jti, string $uid, string $platform, int $ttl = 3600): int
     {
         return 0;
@@ -177,6 +193,7 @@ class NullStorage implements StorageInterface, SsoStorageInterface
     /**
      * 空存储不记录用户 Token 列表
      */
+    #[\Override]
     public function trackUserToken(string $uid, string $platform, string $jti, int $ttl = 0): bool
     {
         return false;
@@ -185,6 +202,7 @@ class NullStorage implements StorageInterface, SsoStorageInterface
     /**
      * 空存储不保存 SSO 映射
      */
+    #[\Override]
     public function setSsoMapping(string $uid, string $platform, string $jti, int $ttl = 0): bool
     {
         return false;
@@ -193,6 +211,7 @@ class NullStorage implements StorageInterface, SsoStorageInterface
     /**
      * 空存储不返回 SSO 映射
      */
+    #[\Override]
     public function getSsoMapping(string $uid, string $platform): ?string
     {
         return null;

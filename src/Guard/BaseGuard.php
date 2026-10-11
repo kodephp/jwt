@@ -68,6 +68,7 @@ abstract class BaseGuard implements GuardInterface
     /**
      * 验证Token
      */
+    #[\Override]
     public function authenticate(string $token): Payload
     {
         try {
@@ -100,6 +101,7 @@ abstract class BaseGuard implements GuardInterface
     /**
      * 签发Token
      */
+    #[\Override]
     public function issue(Payload $payload): array
     {
         try {
@@ -142,6 +144,7 @@ abstract class BaseGuard implements GuardInterface
     /**
      * 刷新Token
      */
+    #[\Override]
     public function refresh(string $token): array
     {
         // 一次性解析 token，避免在 canRefresh 内重复解析（包含签名验证等重计算）
@@ -218,6 +221,7 @@ abstract class BaseGuard implements GuardInterface
     /**
      * 注销Token
      */
+    #[\Override]
     public function invalidate(string $token): bool
     {
         try {
@@ -480,11 +484,13 @@ abstract class BaseGuard implements GuardInterface
     /**
      * 检查是否唯一（由子类实现）
      */
+    #[\Override]
     abstract public function isUnique(string $uid, string $platform): bool;
 
     /**
      * 注册Token（由子类实现）
      */
+    #[\Override]
     abstract public function register(string $uid, string $platform, string $jti): void;
 
     /**

@@ -30,6 +30,7 @@ class TokenManager implements TokenManagerInterface
      *
      * @return array<string, mixed>
      */
+    #[\Override]
     public function issue(Payload $payload): array
     {
         return $this->guard->issue($payload);
@@ -38,6 +39,7 @@ class TokenManager implements TokenManagerInterface
     /**
      * 验证Token
      */
+    #[\Override]
     public function authenticate(string $token): Payload
     {
         return $this->guard->authenticate($token);
@@ -48,6 +50,7 @@ class TokenManager implements TokenManagerInterface
      *
      * @return array<string, mixed>
      */
+    #[\Override]
     public function refresh(string $token): array
     {
         return $this->guard->refresh($token);
@@ -56,6 +59,7 @@ class TokenManager implements TokenManagerInterface
     /**
      * 注销Token
      */
+    #[\Override]
     public function invalidate(string $token): bool
     {
         return $this->guard->invalidate($token);
@@ -64,6 +68,7 @@ class TokenManager implements TokenManagerInterface
     /**
      * 检查Token是否唯一（用于SSO）
      */
+    #[\Override]
     public function isUnique(string $uid, string $platform): bool
     {
         return $this->guard->isUnique($uid, $platform);
@@ -72,6 +77,7 @@ class TokenManager implements TokenManagerInterface
     /**
      * 注册Token
      */
+    #[\Override]
     public function register(string $uid, string $platform, string $jti): void
     {
         $this->guard->register($uid, $platform, $jti);
@@ -80,6 +86,7 @@ class TokenManager implements TokenManagerInterface
     /**
      * 获取存储实例
      */
+    #[\Override]
     public function getStorage(): StorageInterface
     {
         return $this->storage;
@@ -90,6 +97,7 @@ class TokenManager implements TokenManagerInterface
      *
      * @return array<string, mixed>
      */
+    #[\Override]
     public function getConfig(): array
     {
         return $this->config->all();

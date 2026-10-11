@@ -104,6 +104,7 @@ class RedisReplayProtection implements ReplayProtectionInterface
     /**
      * {@inheritDoc}
      */
+    #[\Override]
     public function checkAndStore(string $jti, string $nonce, int $ttl = 0, int $window = 0): bool
     {
         if ($jti === '' || $nonce === '') {
@@ -146,6 +147,7 @@ class RedisReplayProtection implements ReplayProtectionInterface
     /**
      * {@inheritDoc}
      */
+    #[\Override]
     public function exists(string $jti, string $nonce): bool
     {
         if ($jti === '' || $nonce === '') {
@@ -159,6 +161,7 @@ class RedisReplayProtection implements ReplayProtectionInterface
     /**
      * {@inheritDoc}
      */
+    #[\Override]
     public function purge(): int
     {
         $pattern = "{$this->prefix}replay:*";

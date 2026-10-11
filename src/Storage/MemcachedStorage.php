@@ -92,6 +92,7 @@ class MemcachedStorage implements SsoStorageInterface
     /**
      * 设置键值对
      */
+    #[\Override]
     public function set(string $key, mixed $value, int $ttl = 0): bool
     {
         $prefixedKey = $this->getKey($key);
@@ -109,6 +110,7 @@ class MemcachedStorage implements SsoStorageInterface
     /**
      * 获取键对应的值
      */
+    #[\Override]
     public function get(string $key, mixed $default = null): mixed
     {
         $prefixedKey = $this->getKey($key);
@@ -125,6 +127,7 @@ class MemcachedStorage implements SsoStorageInterface
     /**
      * 删除键
      */
+    #[\Override]
     public function delete(string $key): bool
     {
         $prefixedKey = $this->getKey($key);
@@ -139,6 +142,7 @@ class MemcachedStorage implements SsoStorageInterface
     /**
      * 检查键是否存在
      */
+    #[\Override]
     public function has(string $key): bool
     {
         $prefixedKey = $this->getKey($key);
@@ -150,6 +154,7 @@ class MemcachedStorage implements SsoStorageInterface
     /**
      * 将键加入黑名单
      */
+    #[\Override]
     public function blacklist(string $jti, int $ttl = 3600): bool
     {
         $key = $this->getKey("blacklist:{$jti}");
@@ -159,6 +164,7 @@ class MemcachedStorage implements SsoStorageInterface
     /**
      * 检查键是否在黑名单中
      */
+    #[\Override]
     public function isBlacklisted(string $jti): bool
     {
         $key = $this->getKey("blacklist:{$jti}");
@@ -167,6 +173,7 @@ class MemcachedStorage implements SsoStorageInterface
         return $this->memcached->getResultCode() === Memcached::RES_SUCCESS;
     }
 
+    #[\Override]
     public function removeFromBlacklist(string $jti): bool
     {
         $key = $this->getKey("blacklist:{$jti}");
@@ -178,6 +185,7 @@ class MemcachedStorage implements SsoStorageInterface
      *
      * @return bool
      */
+    #[\Override]
     public function cleanExpired(): bool
     {
         return true;
@@ -188,6 +196,7 @@ class MemcachedStorage implements SsoStorageInterface
      *
      * @return array<string, mixed>
      */
+    #[\Override]
     public function getStats(): array
     {
         return [
@@ -204,6 +213,7 @@ class MemcachedStorage implements SsoStorageInterface
      * @param int $ttl 过期时间（秒）
      * @return bool
      */
+    #[\Override]
     public function setMultiple(array $values, int $ttl = 0): bool
     {
         foreach ($values as $key => $value) {
@@ -221,6 +231,7 @@ class MemcachedStorage implements SsoStorageInterface
      * @param mixed $default 默认值
      * @return array<string, mixed>
      */
+    #[\Override]
     public function getMultiple(array $keys, mixed $default = null): array
     {
         $results = [];
@@ -236,6 +247,7 @@ class MemcachedStorage implements SsoStorageInterface
      * @param array<string> $keys 键数组
      * @return bool
      */
+    #[\Override]
     public function deleteMultiple(array $keys): bool
     {
         foreach ($keys as $key) {
@@ -253,6 +265,7 @@ class MemcachedStorage implements SsoStorageInterface
      * @param int $ttl 新的过期时间（秒）
      * @return bool
      */
+    #[\Override]
     public function touch(string $key, int $ttl): bool
     {
         $prefixedKey = $this->getKey($key);
@@ -275,6 +288,7 @@ class MemcachedStorage implements SsoStorageInterface
      * @param string $key 键名
      * @return int 剩余秒数，-2 表示键不存在，-1 表示永不过期
      */
+    #[\Override]
     public function getRemainingTtl(string $key): int
     {
         // 先检查主键是否存在
@@ -301,6 +315,7 @@ class MemcachedStorage implements SsoStorageInterface
      *
      * @return bool
      */
+    #[\Override]
     public function clear(): bool
     {
         return $this->memcached->flush();
@@ -326,6 +341,7 @@ class MemcachedStorage implements SsoStorageInterface
      * @param int    $ttl      黑名单保留时间（秒）
      * @return int 受影响键数量
      */
+    #[\Override]
     public function atomicRevoke(string $jti, string $uid, string $platform, int $ttl = 3600): int
     {
         $count = 0;
@@ -360,6 +376,7 @@ class MemcachedStorage implements SsoStorageInterface
      * @param int    $ttl      列表保留时间（秒）
      * @return bool
      */
+    #[\Override]
     public function trackUserToken(string $uid, string $platform, string $jti, int $ttl = 0): bool
     {
         $key = "user:{$uid}:{$platform}:tokens";
@@ -378,6 +395,7 @@ class MemcachedStorage implements SsoStorageInterface
      * @param int    $ttl      映射保留时间（秒）
      * @return bool
      */
+    #[\Override]
     public function setSsoMapping(string $uid, string $platform, string $jti, int $ttl = 0): bool
     {
         return $this->set("sso:{$uid}:{$platform}", $jti, $ttl);
@@ -390,6 +408,7 @@ class MemcachedStorage implements SsoStorageInterface
      * @param string $platform 平台标识
      * @return string|null JTI，不存在时返回 null
      */
+    #[\Override]
     public function getSsoMapping(string $uid, string $platform): ?string
     {
         $value = $this->get("sso:{$uid}:{$platform}");

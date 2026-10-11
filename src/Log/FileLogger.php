@@ -36,6 +36,7 @@ class FileLogger implements LoggerInterface
      * @param array<string, mixed> $context 上下文数据
      * @return void
      */
+    #[\Override]
     public function debug(string $message, array $context = []): void
     {
         $this->write('debug', $message, $context);
@@ -48,6 +49,7 @@ class FileLogger implements LoggerInterface
      * @param array<string, mixed> $context 上下文数据
      * @return void
      */
+    #[\Override]
     public function info(string $message, array $context = []): void
     {
         $this->write('info', $message, $context);
@@ -60,6 +62,7 @@ class FileLogger implements LoggerInterface
      * @param array<string, mixed> $context 上下文数据
      * @return void
      */
+    #[\Override]
     public function warning(string $message, array $context = []): void
     {
         $this->write('warning', $message, $context);
@@ -72,6 +75,7 @@ class FileLogger implements LoggerInterface
      * @param array<string, mixed> $context 上下文数据
      * @return void
      */
+    #[\Override]
     public function error(string $message, array $context = []): void
     {
         $this->write('error', $message, $context);

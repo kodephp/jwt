@@ -116,6 +116,7 @@ class RedisStorage implements SsoStorageInterface
     /**
      * 设置键值对
      */
+    #[\Override]
     public function set(string $key, mixed $value, int $ttl = 0): bool
     {
         $key = $this->getKey($key);
@@ -137,6 +138,7 @@ class RedisStorage implements SsoStorageInterface
      * @param mixed $default 默认值
      * @return mixed
      */
+    #[\Override]
     public function get(string $key, mixed $default = null): mixed
     {
         $key = $this->getKey($key);
@@ -155,6 +157,7 @@ class RedisStorage implements SsoStorageInterface
     /**
      * 删除键
      */
+    #[\Override]
     public function delete(string $key): bool
     {
         $key = $this->getKey($key);
@@ -164,6 +167,7 @@ class RedisStorage implements SsoStorageInterface
     /**
      * 检查键是否存在
      */
+    #[\Override]
     public function has(string $key): bool
     {
         $key = $this->getKey($key);
@@ -177,6 +181,7 @@ class RedisStorage implements SsoStorageInterface
      * @param int $ttl 过期时间（秒）
      * @return bool
      */
+    #[\Override]
     public function setMultiple(array $values, int $ttl = 0): bool
     {
         $pipe = $this->redis->multi();
@@ -229,6 +234,7 @@ class RedisStorage implements SsoStorageInterface
      * @param mixed $default 默认值
      * @return array<string, mixed>
      */
+    #[\Override]
     public function getMultiple(array $keys, mixed $default = null): array
     {
         $keys = array_values($keys);
@@ -324,6 +330,7 @@ class RedisStorage implements SsoStorageInterface
      *
      * @param array<int, string> $keys 键列表
      */
+    #[\Override]
     public function deleteMultiple(array $keys): bool
     {
         $redisKeys = array_map([$this, 'getKey'], $keys);
@@ -333,6 +340,7 @@ class RedisStorage implements SsoStorageInterface
     /**
      * 将键加入黑名单
      */
+    #[\Override]
     public function blacklist(string $jti, int $ttl = 3600): bool
     {
         $key = $this->getKey("blacklist:{$jti}");
@@ -342,12 +350,14 @@ class RedisStorage implements SsoStorageInterface
     /**
      * 检查键是否在黑名单中
      */
+    #[\Override]
     public function isBlacklisted(string $jti): bool
     {
         $key = $this->getKey("blacklist:{$jti}");
         return (bool) $this->redis->exists($key);
     }
 
+    #[\Override]
     public function removeFromBlacklist(string $jti): bool
     {
         $key = $this->getKey("blacklist:{$jti}");
@@ -371,6 +381,7 @@ class RedisStorage implements SsoStorageInterface
      * @param int    $ttl       黑名单保留时间（秒）
      * @return int 受影响键数量
      */
+    #[\Override]
     public function atomicRevoke(string $jti, string $uid, string $platform, int $ttl = 3600): int
     {
         $keys = [
@@ -394,6 +405,7 @@ class RedisStorage implements SsoStorageInterface
      * @param int    $ttl       列表保留时间（秒）
      * @return bool
      */
+    #[\Override]
     public function trackUserToken(string $uid, string $platform, string $jti, int $ttl = 0): bool
     {
         $key = $this->getKey("user:{$uid}:{$platform}:tokens");
@@ -418,6 +430,7 @@ class RedisStorage implements SsoStorageInterface
      * @param int    $ttl       过期时间（秒）
      * @return bool
      */
+    #[\Override]
     public function setSsoMapping(string $uid, string $platform, string $jti, int $ttl = 0): bool
     {
         $key = $this->getKey("sso:{$uid}:{$platform}");
@@ -430,6 +443,7 @@ class RedisStorage implements SsoStorageInterface
     /**
      * 获取 SSO 平台 → JTI 映射
      */
+    #[\Override]
     public function getSsoMapping(string $uid, string $platform): ?string
     {
         $key = $this->getKey("sso:{$uid}:{$platform}");
@@ -445,6 +459,7 @@ class RedisStorage implements SsoStorageInterface
      *
      * @return bool
      */
+    #[\Override]
     public function cleanExpired(): bool
     {
         return true;
@@ -455,6 +470,7 @@ class RedisStorage implements SsoStorageInterface
      *
      * @return array<string, mixed>
      */
+    #[\Override]
     public function getStats(): array
     {
         return [
@@ -464,12 +480,14 @@ class RedisStorage implements SsoStorageInterface
         ];
     }
 
+    #[\Override]
     public function touch(string $key, int $ttl): bool
     {
         $key = $this->getKey($key);
         return (bool) $this->redis->expire($key, $ttl);
     }
 
+    #[\Override]
     public function getRemainingTtl(string $key): int
     {
         $key = $this->getKey($key);
@@ -486,6 +504,7 @@ class RedisStorage implements SsoStorageInterface
         return $ttl === -2 ? -2 : $ttl;
     }
 
+    #[\Override]
     public function clear(): bool
     {
         $keys = $this->redis->keys($this->prefix . '*');

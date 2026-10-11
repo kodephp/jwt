@@ -24,6 +24,7 @@ class TokenBlacklistedException extends JwtException
     /**
      * 获取Token的JTI
      */
+    #[\Override]
     public function getJti(): ?string
     {
         return $this->jti;

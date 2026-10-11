@@ -95,6 +95,7 @@ class FileStorage implements SsoStorageInterface
     /**
      * 设置键值对
      */
+    #[\Override]
     public function set(string $key, mixed $value, int $ttl = 0): bool
     {
         $filePath = $this->getFilePath($key);
@@ -118,6 +119,7 @@ class FileStorage implements SsoStorageInterface
     /**
      * 获取键对应的值
      */
+    #[\Override]
     public function get(string $key, mixed $default = null): mixed
     {
         $filePath = $this->getFilePath($key);
@@ -154,6 +156,7 @@ class FileStorage implements SsoStorageInterface
     /**
      * 删除键
      */
+    #[\Override]
     public function delete(string $key): bool
     {
         $filePath = $this->getFilePath($key);
@@ -170,6 +173,7 @@ class FileStorage implements SsoStorageInterface
     /**
      * 检查键是否存在
      */
+    #[\Override]
     public function has(string $key): bool
     {
         $filePath = $this->getFilePath($key);
@@ -206,6 +210,7 @@ class FileStorage implements SsoStorageInterface
     /**
      * 将键加入黑名单
      */
+    #[\Override]
     public function blacklist(string $jti, int $ttl = 3600): bool
     {
         return $this->set("blacklist_{$jti}", 1, $ttl);
@@ -214,11 +219,13 @@ class FileStorage implements SsoStorageInterface
     /**
      * 检查键是否在黑名单中
      */
+    #[\Override]
     public function isBlacklisted(string $jti): bool
     {
         return $this->has("blacklist_{$jti}");
     }
 
+    #[\Override]
     public function removeFromBlacklist(string $jti): bool
     {
         return $this->delete("blacklist_{$jti}");
@@ -229,6 +236,7 @@ class FileStorage implements SsoStorageInterface
      *
      * @return bool|int 返回清理的记录数量；当 glob 失败时返回 false
      */
+    #[\Override]
     public function cleanExpired(): bool|int
     {
         return $this->cleanExpiredItems();
@@ -289,6 +297,7 @@ class FileStorage implements SsoStorageInterface
      * @param int $ttl 过期时间（秒）
      * @return bool
      */
+    #[\Override]
     public function setMultiple(array $values, int $ttl = 0): bool
     {
         foreach ($values as $key => $value) {
@@ -306,6 +315,7 @@ class FileStorage implements SsoStorageInterface
      * @param mixed $default 默认值
      * @return array<string, mixed>
      */
+    #[\Override]
     public function getMultiple(array $keys, mixed $default = null): array
     {
         $results = [];
@@ -321,6 +331,7 @@ class FileStorage implements SsoStorageInterface
      * @param array<string> $keys 键数组
      * @return bool
      */
+    #[\Override]
     public function deleteMultiple(array $keys): bool
     {
         foreach ($keys as $key) {
@@ -336,6 +347,7 @@ class FileStorage implements SsoStorageInterface
      *
      * @return array<string, mixed>
      */
+    #[\Override]
     public function getStats(): array
     {
         $files = glob($this->path . '*' . $this->extension);
@@ -347,6 +359,7 @@ class FileStorage implements SsoStorageInterface
         ];
     }
 
+    #[\Override]
     public function touch(string $key, int $ttl): bool
     {
         $filePath = $this->getFilePath($key);
@@ -378,6 +391,7 @@ class FileStorage implements SsoStorageInterface
         return $result !== false;
     }
 
+    #[\Override]
     public function getRemainingTtl(string $key): int
     {
         $filePath = $this->getFilePath($key);
@@ -408,6 +422,7 @@ class FileStorage implements SsoStorageInterface
         return $remaining > 0 ? $remaining : -2;
     }
 
+    #[\Override]
     public function clear(): bool
     {
         $files = glob($this->path . '*' . $this->extension);
@@ -428,6 +443,7 @@ class FileStorage implements SsoStorageInterface
     /**
      * 文件存储原子化撤销（无并发安全保证，慎用于高并发场景）
      */
+    #[\Override]
     public function atomicRevoke(string $jti, string $uid, string $platform, int $ttl = 3600): int
     {
         $count = 0;
@@ -456,6 +472,7 @@ class FileStorage implements SsoStorageInterface
     /**
      * 文件存储记录用户活跃 Token 列表
      */
+    #[\Override]
     public function trackUserToken(string $uid, string $platform, string $jti, int $ttl = 0): bool
     {
         $key = "user:{$uid}:{$platform}:tokens";
@@ -468,6 +485,7 @@ class FileStorage implements SsoStorageInterface
     /**
      * 文件存储设置 SSO 映射
      */
+    #[\Override]
     public function setSsoMapping(string $uid, string $platform, string $jti, int $ttl = 0): bool
     {
         return $this->set("sso:{$uid}:{$platform}", $jti, $ttl);
@@ -476,6 +494,7 @@ class FileStorage implements SsoStorageInterface
     /**
      * 文件存储获取 SSO 映射
      */
+    #[\Override]
     public function getSsoMapping(string $uid, string $platform): ?string
     {
         $value = $this->get("sso:{$uid}:{$platform}");

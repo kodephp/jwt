@@ -21,6 +21,7 @@ class NullLogger implements LoggerInterface
      * @param array<string, mixed> $context 上下文
      * @return void
      */
+    #[\Override]
     public function debug(string $message, array $context = []): void
     {
     }
@@ -32,6 +33,7 @@ class NullLogger implements LoggerInterface
      * @param array<string, mixed> $context 上下文
      * @return void
      */
+    #[\Override]
     public function info(string $message, array $context = []): void
     {
     }
@@ -43,6 +45,7 @@ class NullLogger implements LoggerInterface
      * @param array<string, mixed> $context 上下文
      * @return void
      */
+    #[\Override]
     public function warning(string $message, array $context = []): void
     {
     }
@@ -54,6 +57,7 @@ class NullLogger implements LoggerInterface
      * @param array<string, mixed> $context 上下文
      * @return void
      */
+    #[\Override]
     public function error(string $message, array $context = []): void
     {
     }
