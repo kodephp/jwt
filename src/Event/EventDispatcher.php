@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Kode\Jwt\Event;
 
 use Kode\Jwt\Contract\EventListener;

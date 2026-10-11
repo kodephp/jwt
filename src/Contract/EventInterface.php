@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Kode\Jwt\Contract;
 
 interface EventInterface
