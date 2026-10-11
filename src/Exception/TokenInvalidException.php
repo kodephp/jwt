@@ -15,7 +15,7 @@ class TokenInvalidException extends JwtException
         ?string $reason = null,
         int $code = 0,
         ?\Throwable $previous = null,
-        ?string $token = null,
+        #[\SensitiveParameter] ?string $token = null,
         ?string $jti = null
     ) {
         parent::__construct($message, $code, $previous, $token, $jti);

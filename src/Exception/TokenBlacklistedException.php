@@ -13,7 +13,7 @@ class TokenBlacklistedException extends JwtException
     public function __construct(
         string $message = 'Token has been blacklisted',
         ?string $jti = null,
-        ?string $token = null,
+        #[\SensitiveParameter] ?string $token = null,
         int $code = 0,
         ?\Throwable $previous = null
     ) {

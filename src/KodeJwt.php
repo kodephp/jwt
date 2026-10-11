@@ -39,7 +39,7 @@ use Kode\Jwt\Token\TokenManager;
 class KodeJwt
 {
     /** @var string 版本号（与 composer.json 的 version 保持同步，漏改由 VersionGuardTest 拦下） */
-    public const string VERSION = '3.0.2';
+    public const string VERSION = '3.0.3';
 
     /**
      * 获取本包版本号
@@ -475,7 +475,7 @@ class KodeJwt
     /**
      * 快速验证Token
      */
-    public static function authenticate(string $token, ?string $guard = null): Payload
+    public static function authenticate(#[\SensitiveParameter] string $token, ?string $guard = null): Payload
     {
         return static::guard($guard)->authenticate($token);
     }
@@ -483,7 +483,7 @@ class KodeJwt
     /**
      * 快速刷新Token
      */
-    public static function refresh(string $token, ?string $guard = null): array
+    public static function refresh(#[\SensitiveParameter] string $token, ?string $guard = null): array
     {
         return static::guard($guard)->refresh($token);
     }
@@ -491,7 +491,7 @@ class KodeJwt
     /**
      * 快速注销Token
      */
-    public static function invalidate(string $token, ?string $guard = null): bool
+    public static function invalidate(#[\SensitiveParameter] string $token, ?string $guard = null): bool
     {
         return static::guard($guard)->invalidate($token);
     }
@@ -554,7 +554,7 @@ class KodeJwt
     /**
      * 检查Token是否有效
      */
-    public static function isTokenValid(string $token, ?string $guard = null): bool
+    public static function isTokenValid(#[\SensitiveParameter] string $token, ?string $guard = null): bool
     {
         return static::tokenManager($guard)->isTokenValid($token);
     }
@@ -562,7 +562,7 @@ class KodeJwt
     /**
      * 获取Token信息
      */
-    public static function getTokenInfo(string $token, ?string $guard = null): ?array
+    public static function getTokenInfo(#[\SensitiveParameter] string $token, ?string $guard = null): ?array
     {
         return static::tokenManager($guard)->getTokenInfo($token);
     }
@@ -578,7 +578,7 @@ class KodeJwt
      * @param string|null $guard 守卫名称，传 null 使用默认守卫
      * @return bool 撤销请求已被接受（true）
      */
-    public static function revokeToken(string $token, ?string $guard = null): bool
+    public static function revokeToken(#[\SensitiveParameter] string $token, ?string $guard = null): bool
     {
         return static::revocation($guard)->revoke($token)->isRevoked();
     }
@@ -686,7 +686,7 @@ class KodeJwt
      * @return IntrospectionResponse
      */
     public static function introspect(
-        string $token,
+        #[\SensitiveParameter] string $token,
         ?string $expectedPlatform = null,
         ?string $clientId = null,
         ?string $guard = null,

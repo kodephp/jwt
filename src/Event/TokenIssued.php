@@ -10,7 +10,7 @@ class TokenIssued
 {
     public function __construct(
         public readonly Payload $payload,
-        public readonly string $token,
+        #[\SensitiveParameter] public readonly string $token,
         public readonly int $expiresIn,
         public readonly int $refreshTtl,
         public readonly \DateTimeImmutable $issuedAt

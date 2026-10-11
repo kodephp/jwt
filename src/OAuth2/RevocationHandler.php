@@ -42,7 +42,7 @@ final class RevocationHandler
      * @param string|null $tokenTypeHint 令牌类型提示（access_token / refresh_token），仅用于日志
      * @return RevocationResponse
      */
-    public function revoke(string $token, ?string $tokenTypeHint = null): RevocationResponse
+    public function revoke(#[\SensitiveParameter] string $token, ?string $tokenTypeHint = null): RevocationResponse
     {
         try {
             $payload = $this->parser->parse($token);

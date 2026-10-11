@@ -40,7 +40,7 @@ class TokenManager implements TokenManagerInterface
      * 验证Token
      */
     #[\Override]
-    public function authenticate(string $token): Payload
+    public function authenticate(#[\SensitiveParameter] string $token): Payload
     {
         return $this->guard->authenticate($token);
     }
@@ -51,7 +51,7 @@ class TokenManager implements TokenManagerInterface
      * @return array<string, mixed>
      */
     #[\Override]
-    public function refresh(string $token): array
+    public function refresh(#[\SensitiveParameter] string $token): array
     {
         return $this->guard->refresh($token);
     }
@@ -60,7 +60,7 @@ class TokenManager implements TokenManagerInterface
      * 注销Token
      */
     #[\Override]
-    public function invalidate(string $token): bool
+    public function invalidate(#[\SensitiveParameter] string $token): bool
     {
         return $this->guard->invalidate($token);
     }
@@ -303,7 +303,7 @@ class TokenManager implements TokenManagerInterface
      * @param string $token JWT Token
      * @return bool 是否有效
      */
-    public function isTokenValid(string $token): bool
+    public function isTokenValid(#[\SensitiveParameter] string $token): bool
     {
         try {
             $payload = $this->guard->authenticate($token);
@@ -319,7 +319,7 @@ class TokenManager implements TokenManagerInterface
      *
      * @return array<string, mixed>|null
      */
-    public function getTokenInfo(string $token): ?array
+    public function getTokenInfo(#[\SensitiveParameter] string $token): ?array
     {
         try {
             $payload = $this->guard->authenticate($token);

@@ -69,7 +69,7 @@ abstract class BaseGuard implements GuardInterface
      * 验证Token
      */
     #[\Override]
-    public function authenticate(string $token): Payload
+    public function authenticate(#[\SensitiveParameter] string $token): Payload
     {
         try {
             $payload = $this->parser->parse(
@@ -145,7 +145,7 @@ abstract class BaseGuard implements GuardInterface
      * 刷新Token
      */
     #[\Override]
-    public function refresh(string $token): array
+    public function refresh(#[\SensitiveParameter] string $token): array
     {
         // 一次性解析 token，避免在 canRefresh 内重复解析（包含签名验证等重计算）
         try {
@@ -222,7 +222,7 @@ abstract class BaseGuard implements GuardInterface
      * 注销Token
      */
     #[\Override]
-    public function invalidate(string $token): bool
+    public function invalidate(#[\SensitiveParameter] string $token): bool
     {
         try {
             $payload = $this->parser->parse(
@@ -258,7 +258,7 @@ abstract class BaseGuard implements GuardInterface
      *
      * 兼容外部调用：内部会重新解析 token。Guard 内部刷新流程应使用 canRefreshPayload 避免重复解析。
      */
-    protected function canRefresh(string $token): bool
+    protected function canRefresh(#[\SensitiveParameter] string $token): bool
     {
         // 检查是否启用刷新
         if (!($this->config['refresh_enabled'] ?? false)) {
@@ -404,7 +404,7 @@ abstract class BaseGuard implements GuardInterface
     /**
      * 存储Token信息
      */
-    protected function storeToken(Payload $payload, string $token): void
+    protected function storeToken(Payload $payload, #[\SensitiveParameter] string $token): void
     {
         // 如果启用了黑名单，则存储Token信息
         if ($this->config['blacklist_enabled'] ?? false) {
@@ -500,7 +500,7 @@ abstract class BaseGuard implements GuardInterface
      * 在认证流程中根据 JTI + Nonce 组合进行一次性消费校验。
      * 命中重放时抛出 TokenReplayException。
      */
-    protected function checkAntiReplay(Payload $payload, string $token): void
+    protected function checkAntiReplay(Payload $payload, #[\SensitiveParameter] string $token): void
     {
         if ($this->antiReplay === null || !$this->antiReplay->isEnabled()) {
             return;

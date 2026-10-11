@@ -32,7 +32,7 @@ interface GuardInterface
      * @throws TokenBlacklistedException 当Token已被列入黑名单时抛出异常
      * @throws TokenReplayException 当检测到Token重放攻击时抛出异常
      */
-    public function authenticate(string $token): Payload;
+    public function authenticate(#[\SensitiveParameter] string $token): Payload;
 
     /**
      * 刷新Token
@@ -43,7 +43,7 @@ interface GuardInterface
      * @throws TokenExpiredException 当旧Token已超出刷新期时抛出异常
      * @throws JwtException 当刷新功能未启用或刷新失败时抛出异常
      */
-    public function refresh(string $token): array;
+    public function refresh(#[\SensitiveParameter] string $token): array;
 
     /**
      * 使Token失效
@@ -53,7 +53,7 @@ interface GuardInterface
      * @throws TokenInvalidException 当Token无效时抛出异常
      * @throws JwtException 当写入黑名单失败时抛出异常
      */
-    public function invalidate(string $token): bool;
+    public function invalidate(#[\SensitiveParameter] string $token): bool;
 
     /**
      * 检查是否唯一登录（用于SSO）

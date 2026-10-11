@@ -16,17 +16,17 @@ interface TokenManagerInterface
     /**
      * 验证Token
      */
-    public function authenticate(string $token): Payload;
+    public function authenticate(#[\SensitiveParameter] string $token): Payload;
 
     /**
      * 刷新Token
      */
-    public function refresh(string $token): array;
+    public function refresh(#[\SensitiveParameter] string $token): array;
 
     /**
      * 注销Token
      */
-    public function invalidate(string $token): bool;
+    public function invalidate(#[\SensitiveParameter] string $token): bool;
 
     /**
      * 检查Token是否唯一（用于SSO）

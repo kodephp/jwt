@@ -19,7 +19,7 @@ class TokenReplayException extends JwtException
     public function __construct(
         string $message = 'Token replay detected',
         ?string $jti = null,
-        ?string $token = null,
+        #[\SensitiveParameter] ?string $token = null,
         ?string $nonce = null,
         int $code = 0,
         ?\Throwable $previous = null

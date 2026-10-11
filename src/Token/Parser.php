@@ -44,7 +44,7 @@ class Parser
      * @return Payload
      */
     public function parse(
-        string $token,
+        #[\SensitiveParameter] string $token,
         ?string $expectedPlatform = null,
         bool $ignoreExpiration = false,
         array $expectedClaims = []
@@ -179,7 +179,7 @@ class Parser
      * @throws TokenExpiredException 当Token已过期时抛出异常
      * @throws TokenInvalidException 当Token尚未生效或签发时间在未来时抛出异常
      */
-    protected function validateClaims(array $claims, bool $ignoreExpiration, string $token): void
+    protected function validateClaims(array $claims, bool $ignoreExpiration, #[\SensitiveParameter] string $token): void
     {
         $now = time();
         $clockSkew = max(0, (int) ($this->config['clock_skew'] ?? 0));
@@ -224,7 +224,7 @@ class Parser
      * @param string $token 原始 Token 字符串（用于异常上下文）
      * @throws TokenInvalidException 当算法被禁用或不匹配时抛出
      */
-    protected function ensureAllowedAlgorithm(string $actualAlgorithm, string $token): void
+    protected function ensureAllowedAlgorithm(string $actualAlgorithm, #[\SensitiveParameter] string $token): void
     {
         $actualUpper = strtoupper($actualAlgorithm);
 
@@ -270,7 +270,7 @@ class Parser
      * @param string $token 原始 Token（用于异常信息）
      * @return void
      */
-    protected function validateExpectedClaims(array $payload, array $expected, string $token): void
+    protected function validateExpectedClaims(array $payload, array $expected, #[\SensitiveParameter] string $token): void
     {
         if (empty($expected)) {
             return;

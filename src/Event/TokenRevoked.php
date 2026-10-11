@@ -10,7 +10,7 @@ class TokenRevoked
 {
     public function __construct(
         public readonly Payload $payload,
-        public readonly string $token,
+        #[\SensitiveParameter] public readonly string $token,
         public readonly string $jti,
         public readonly \DateTimeImmutable $revokedAt,
         public readonly ?string $reason = null

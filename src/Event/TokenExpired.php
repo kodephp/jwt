@@ -10,7 +10,7 @@ class TokenExpired
 {
     public function __construct(
         public readonly Payload $payload,
-        public readonly string $token,
+        #[\SensitiveParameter] public readonly string $token,
         public readonly \DateTimeImmutable $expiredAt,
         public readonly bool $isRefreshable
     ) {

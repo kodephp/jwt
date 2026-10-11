@@ -61,7 +61,7 @@ final class Introspector
      * @return IntrospectionResponse
      */
     public function introspect(
-        string $token,
+        #[\SensitiveParameter] string $token,
         ?string $expectedPlatform = null,
         ?string $clientId = null,
     ): IntrospectionResponse {

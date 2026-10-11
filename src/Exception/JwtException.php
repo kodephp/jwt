@@ -13,7 +13,7 @@ class JwtException extends \Exception
         string $message = "",
         int $code = 0,
         ?\Throwable $previous = null,
-        ?string $token = null,
+        #[\SensitiveParameter] ?string $token = null,
         ?string $jti = null
     ) {
         parent::__construct($message, $code, $previous);
@@ -40,7 +40,7 @@ class JwtException extends \Exception
     /**
      * 设置Token
      */
-    public function setToken(string $token): self
+    public function setToken(#[\SensitiveParameter] string $token): self
     {
         $this->token = $token;
         return $this;

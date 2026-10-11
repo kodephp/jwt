@@ -36,7 +36,7 @@ final class RsaPss
      * @return string 原始签名字节
      * @throws JwtException 当密钥不可用或运算失败时
      */
-    public static function sign(string $data, OpenSSLAsymmetricKey $privateKey, string $hash): string
+    public static function sign(string $data, #[\SensitiveParameter] OpenSSLAsymmetricKey $privateKey, string $hash): string
     {
         $modBits = self::modulusBits($privateKey);
         $keyLength = intdiv($modBits + 7, 8);

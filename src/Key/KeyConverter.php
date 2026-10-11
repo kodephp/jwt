@@ -321,7 +321,7 @@ final class KeyConverter
      * @param string|null $alg 适用的算法（如 HS256）
      * @return Jwk
      */
-    public static function octToJwk(string $secret, ?string $kid = null, ?string $alg = null): Jwk
+    public static function octToJwk(#[\SensitiveParameter] string $secret, ?string $kid = null, ?string $alg = null): Jwk
     {
         if ($secret === '') {
             throw new JwtException('Symmetric key cannot be empty');

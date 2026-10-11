@@ -191,7 +191,7 @@ final class JwkFactory
      * @param string|null $kid
      * @return Jwk
      */
-    public static function fromSecret(string $secret, string $alg = 'HS256', ?string $kid = null): Jwk
+    public static function fromSecret(#[\SensitiveParameter] string $secret, string $alg = 'HS256', ?string $kid = null): Jwk
     {
         return KeyConverter::octToJwk($secret, $kid ?? self::generateKid('oct'), $alg);
     }
