@@ -90,12 +90,7 @@ final readonly class JwkSet implements Arrayable, Jsonable
      */
     public function findByAlgorithm(string $alg): ?Jwk
     {
-        foreach ($this->jwks as $jwk) {
-            if ($jwk->getAlg() === $alg) {
-                return $jwk;
-            }
-        }
-        return null;
+        return array_find($this->jwks, fn($jwk) => $jwk->getAlg() === $alg);
     }
 
     /**

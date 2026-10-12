@@ -155,12 +155,7 @@ final class Fingerprint
         if ($ip === '') {
             return false;
         }
-        foreach ($this->trustedIpPrefixes as $prefix) {
-            if (str_starts_with($ip, $prefix)) {
-                return true;
-            }
-        }
-        return false;
+        return array_any($this->trustedIpPrefixes, fn($prefix) => str_starts_with($ip, $prefix));
     }
 
     /**

@@ -222,12 +222,7 @@ enum Algorithm: string
     public static function tryFromName(string $value): ?self
     {
         $normalized = strtoupper(trim($value));
-        foreach (self::cases() as $case) {
-            if (strtoupper($case->value) === $normalized) {
-                return $case;
-            }
-        }
-        return null;
+        return array_find(self::cases(), fn($case) => strtoupper($case->value) === $normalized);
     }
 
     /**

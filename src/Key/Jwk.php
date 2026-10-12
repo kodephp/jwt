@@ -278,12 +278,7 @@ final readonly class Jwk implements Arrayable, Jsonable, Stringable
             default => [],
         };
 
-        foreach ($privateParams as $param) {
-            if (isset($this->params[$param])) {
-                return true;
-            }
-        }
-        return false;
+        return array_any($privateParams, fn($param) => isset($this->params[$param]));
     }
 
     /**

@@ -208,13 +208,7 @@ class RedisStorage implements SsoStorageInterface
         }
 
         // 检查所有操作是否成功
-        foreach ($results as $result) {
-            if ($result === false) {
-                return false;
-            }
-        }
-
-        return true;
+        return array_all($results, fn($result) => !($result === false));
     }
 
     /**

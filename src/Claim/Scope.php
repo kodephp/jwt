@@ -133,12 +133,7 @@ final readonly class Scope implements Arrayable, Jsonable, \Countable
      */
     public function hasAny(array $scopes): bool
     {
-        foreach ($scopes as $scope) {
-            if (in_array($scope, $this->scopes, true)) {
-                return true;
-            }
-        }
-        return false;
+        return array_any($scopes, fn($scope) => in_array($scope, $this->scopes, true));
     }
 
     /**
@@ -149,12 +144,7 @@ final readonly class Scope implements Arrayable, Jsonable, \Countable
      */
     public function hasAll(array $scopes): bool
     {
-        foreach ($scopes as $scope) {
-            if (!in_array($scope, $this->scopes, true)) {
-                return false;
-            }
-        }
-        return true;
+        return array_all($scopes, fn($scope) => in_array($scope, $this->scopes, true));
     }
 
     /**
@@ -208,12 +198,7 @@ final readonly class Scope implements Arrayable, Jsonable, \Countable
      */
     public function allAllowed(array $allowedScopes): bool
     {
-        foreach ($this->scopes as $scope) {
-            if (!in_array($scope, $allowedScopes, true)) {
-                return false;
-            }
-        }
-        return true;
+        return array_all($this->scopes, fn($scope) => in_array($scope, $allowedScopes, true));
     }
 
     /**

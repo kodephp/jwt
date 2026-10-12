@@ -84,13 +84,7 @@ class KeyRotationManager
     {
         $keys = $this->getAllKeys();
 
-        foreach ($keys as $key) {
-            if ($key->isPrimary && $key->isUsable()) {
-                return $key;
-            }
-        }
-
-        return null;
+        return array_find($keys, fn($key) => $key->isPrimary && $key->isUsable());
     }
 
     /**

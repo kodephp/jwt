@@ -334,12 +334,7 @@ class DatabaseStorage implements SsoStorageInterface
     #[\Override]
     public function setMultiple(array $values, int $ttl = 0): bool
     {
-        foreach ($values as $key => $value) {
-            if (!$this->set($key, $value, $ttl)) {
-                return false;
-            }
-        }
-        return true;
+        return array_all($values, fn($value, $key) => $this->set($key, $value, $ttl));
     }
 
     /**
@@ -368,12 +363,7 @@ class DatabaseStorage implements SsoStorageInterface
     #[\Override]
     public function deleteMultiple(array $keys): bool
     {
-        foreach ($keys as $key) {
-            if (!$this->delete($key)) {
-                return false;
-            }
-        }
-        return true;
+        return array_all($keys, fn($key) => $this->delete($key));
     }
 
     /**
