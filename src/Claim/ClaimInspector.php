@@ -83,10 +83,8 @@ final class ClaimInspector
         $expectedList = is_array($expectedAudience) ? $expectedAudience : [$expectedAudience];
         $actualList = is_array($actualAud) ? $actualAud : [$actualAud];
 
-        foreach ($expectedList as $expected) {
-            if (in_array($expected, $actualList, true)) {
-                return $this;
-            }
+        if (array_any($expectedList, fn($expected) => in_array($expected, $actualList, true))) {
+            return $this;
         }
 
         throw new TokenInvalidException(
