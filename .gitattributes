@@ -54,5 +54,6 @@ composer.lock linguist-language=JSON
 # Documentation files
 README.md linguist-documentation
 CHANGELOG.md linguist-documentation
-LICENSE linguist-documentation/phpstan.neon           export-ignore
+LICENSE linguist-documentation
+/phpstan.neon           export-ignore
 /stubs/                 export-ignore
