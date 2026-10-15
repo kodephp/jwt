@@ -1,0 +1,40 @@
+parameters:
+    level: 6
+    paths:
+        - src
+    ignoreErrors:
+        # 数组值类型是深层内部细节，公共 API 面已由参数/返回类型钉住
+        -
+            message: '#no value type specified in iterable type#'
+            identifier: missingType.iterableValue
+        # 不可变派生工厂模式（Exception::xxx() 等），类树内构造签名受控
+        -
+            message: '#Unsafe usage of new static\(\)#'
+            identifier: new.static
+        # 配置驱动的防御性判断：phpstan 依据同文件默认值推断形状，无法感知用户
+        # 手改的配置；is_string/is_array/method_exists 等闸门是运行期护栏
+        # （含对旧版 vendor 能力的版本守卫），不因静态可证而拆除。
+        -
+            identifier: function.alreadyNarrowedType
+        # 同上：配置数组键的 ?? 兜底（键在默认值里存在，不代表运行期一定存在）
+        -
+            identifier: nullCoalesce.offset
+        -
+            identifier: nullCoalesce.variable
+        -
+            identifier: nullCoalesce.expr
+        # ?? 兜底已初始化的非空属性/深层对象链（配置驱动的防御式写法，删 ?? 会把「字段缺失」变 fatal）
+        -
+            identifier: nullCoalesce.initializedProperty
+        # readonly 记录型参数（构造留档/语义参考，删改即破坏构造签名兼容）
+        -
+            identifier: property.onlyWritten
+        # 防御性可空返回签名：降级路径存在与否取决于运行期环境（文件锁/存储后端）
+        -
+            identifier: return.unusedType
+        # vendor 版本守卫与反射构造后的冗余断言：静态可证，运行期（旧 vendor/
+        # 动态实例化）不可证，保留。
+        -
+            identifier: instanceof.alwaysTrue
+    # 忽略基线随代码演进增删，不把「某条 ignore 已不再命中」当错误报出
+    reportUnmatchedIgnoredErrors: false

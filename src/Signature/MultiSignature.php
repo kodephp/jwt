@@ -103,7 +103,8 @@ final class MultiSignature
     {
         $newSigners = array_filter(
             $this->signers,
-            fn($signer, $index) => ($signer['keyId'] ?? "signer_{$index}") !== $keyId
+            fn($signer, $index) => ($signer['keyId'] ?? "signer_{$index}") !== $keyId,
+            ARRAY_FILTER_USE_BOTH
         );
         return new self(array_values($newSigners), $this->detachedContent);
     }

@@ -84,7 +84,7 @@ class Builder
     /**
      * 设置声明
      */
-    public function setClaim(string $key, mixed $value): self
+    public function setClaim(string $key, mixed $value): static
     {
         $this->claims[$key] = $value;
         return $this;
@@ -93,7 +93,7 @@ class Builder
     /**
      * 批量设置声明
      */
-    public function setClaims(array $claims): self
+    public function setClaims(array $claims): static
     {
         $this->claims = array_merge($this->claims, $claims);
         return $this;
@@ -175,9 +175,8 @@ class Builder
      * 设置用户ID
      *
      * @param int|string $uid 用户ID（支持雪花ID等字符串类型）
-     * @return $this
      */
-    public function setUid(int|string $uid): self
+    public function setUid(int|string $uid): static
     {
         return $this->setClaim('uid', $uid);
     }
@@ -185,7 +184,7 @@ class Builder
     /**
      * 设置用户名
      */
-    public function setUsername(string $username): self
+    public function setUsername(string $username): static
     {
         return $this->setClaim('username', $username);
     }
@@ -193,7 +192,7 @@ class Builder
     /**
      * 设置平台
      */
-    public function setPlatform(string $platform): self
+    public function setPlatform(string $platform): static
     {
         return $this->setClaim('platform', $platform);
     }
@@ -202,9 +201,8 @@ class Builder
      * 设置角色
      *
      * @param array<string> $roles 角色数组
-     * @return $this
      */
-    public function setRoles(array $roles): self
+    public function setRoles(array $roles): static
     {
         return $this->setClaim('roles', $roles);
     }
@@ -213,9 +211,8 @@ class Builder
      * 设置权限
      *
      * @param array<string> $permissions 权限数组
-     * @return $this
      */
-    public function setPermissions(array $permissions): self
+    public function setPermissions(array $permissions): static
     {
         return $this->setClaim('perms', $permissions);
     }
@@ -224,9 +221,8 @@ class Builder
      * 设置自定义数据
      *
      * @param array<string, mixed> $custom 自定义数据
-     * @return $this
      */
-    public function setCustom(array $custom): self
+    public function setCustom(array $custom): static
     {
         return $this->setClaim('custom', $custom);
     }
@@ -238,9 +234,8 @@ class Builder
      * 服务端验证 Nonce 唯一性后放行，避免攻击者重放截获的请求。
      *
      * @param string $nonce 一次性随机值
-     * @return $this
      */
-    public function setNonce(string $nonce): self
+    public function setNonce(string $nonce): static
     {
         return $this->setClaim('nonce', $nonce);
     }
@@ -253,9 +248,8 @@ class Builder
      * 资源服务器据此确认请求方持有对应私钥。
      *
      * @param Confirmation $confirmation 确认声明值对象
-     * @return $this
      */
-    public function setConfirmation(Confirmation $confirmation): self
+    public function setConfirmation(Confirmation $confirmation): static
     {
         return $this->setClaim('cnf', $confirmation->toArray());
     }

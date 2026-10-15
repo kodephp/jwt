@@ -45,7 +45,7 @@ final class Fingerprint
     /**
      * @param array<string> $fields 纳入指纹计算的上下文字段名（默认 user_agent + ip）
      * @param bool $ipPrefixOnly IP 是否仅取前两段（默认 true，平衡安全性与用户体验）
-     * @param array<string> $trustedUaTrustedIpPrefix 可信 IP 前缀白名单
+     * @param array<string> $trustedIpPrefixes 可信 IP 前缀白名单
      */
     public function __construct(
         private readonly array $fields = self::DEFAULT_FIELDS,

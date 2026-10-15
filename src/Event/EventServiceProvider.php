@@ -50,8 +50,29 @@ class EventServiceProvider
         // 尝试获取事件类型
         $eventType = $this->getEventTypeFromCallable($listener);
         if ($eventType) {
-            $this->dispatcher->addListener($eventType, $listener);
+            $this->dispatcher->addListener($eventType, self::toListener($listener));
         }
+    }
+
+    /**
+     * 把任意可调用包装成 EventListener（派发器按 ->handle() 调用，不能直接存数组可调用）
+     */
+    private static function toListener(callable $callback): \Kode\Jwt\Contract\EventListener
+    {
+        if ($callback instanceof \Kode\Jwt\Contract\EventListener) {
+            return $callback;
+        }
+
+        return new class(\Closure::fromCallable($callback)) implements \Kode\Jwt\Contract\EventListener {
+            public function __construct(private readonly \Closure $callback)
+            {
+            }
+
+            public function handle(object $event): void
+            {
+                ($this->callback)($event);
+            }
+        };
     }
 
     /**
@@ -68,13 +89,13 @@ class EventServiceProvider
 
             if (!empty($parameters)) {
                 $paramType = $parameters[0]->getType();
-                if ($paramType) {
+                if ($paramType instanceof \ReflectionNamedType) {
                     $eventType = $paramType->getName();
                     $parts = explode('\\', $eventType);
                     $eventName = end($parts);
 
                     $instance = new $className();
-                    $this->dispatcher->addListener($eventName, [$instance, 'handle']);
+                    $this->dispatcher->addListener($eventName, self::toListener([$instance, 'handle']));
                 }
             }
         }
@@ -90,11 +111,11 @@ class EventServiceProvider
             $listener = $config['listener'];
 
             if (is_string($event) && is_callable($listener)) {
-                $this->dispatcher->addListener($event, $listener);
+                $this->dispatcher->addListener($event, self::toListener($listener));
             } elseif (is_string($event) && is_string($listener) && class_exists($listener)) {
                 $instance = new $listener();
                 if (method_exists($instance, 'handle')) {
-                    $this->dispatcher->addListener($event, [$instance, 'handle']);
+                    $this->dispatcher->addListener($event, self::toListener([$instance, 'handle']));
                 }
             }
         }
@@ -105,8 +126,8 @@ class EventServiceProvider
      */
     private function getEventTypeFromCallable(callable $callable): ?string
     {
-        if (is_array($callable) && count($callable) === 2) {
-            // [$object, 'method'] 或 ['class', 'method']
+        if (is_array($callable)) {
+            // [$object, 'method'] 或 ['class', 'method']（callable 数组形态恒为两元素）
             $class = is_object($callable[0]) ? get_class($callable[0]) : $callable[0];
             return $this->getEventTypeFromClassMethod($class, $callable[1]);
         } elseif (is_string($callable) && strpos($callable, '::') !== false) {
@@ -120,7 +141,7 @@ class EventServiceProvider
 
             if (!empty($parameters)) {
                 $paramType = $parameters[0]->getType();
-                if ($paramType) {
+                if ($paramType instanceof \ReflectionNamedType) {
                     $eventType = $paramType->getName();
                     $parts = explode('\\', $eventType);
                     return end($parts);
@@ -150,7 +171,7 @@ class EventServiceProvider
 
         if (!empty($parameters)) {
             $paramType = $parameters[0]->getType();
-            if ($paramType) {
+            if ($paramType instanceof \ReflectionNamedType) {
                 $eventType = $paramType->getName();
                 $parts = explode('\\', $eventType);
                 return end($parts);

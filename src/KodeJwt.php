@@ -63,13 +63,13 @@ class KodeJwt
      */
     public static function init(array $config = []): void
     {
-        static::resetRuntimeState();
-        static::$configLoader = new ConfigLoader($config);
-        static::$eventDispatcher = new EventDispatcher();
-        static::$logger = LoggerFactory::create(static::$configLoader->get('logging', []));
-        static::bootAntiReplay();
-        static::$configLoaded = true;
-        static::logger()->info('JWT 初始化完成', ['guard' => static::$configLoader->get('defaults.guard', 'api')]);
+        self::resetRuntimeState();
+        self::$configLoader = new ConfigLoader($config);
+        self::$eventDispatcher = new EventDispatcher();
+        self::$logger = LoggerFactory::create(self::$configLoader->get('logging', []));
+        self::bootAntiReplay();
+        self::$configLoaded = true;
+        self::logger()->info('JWT 初始化完成', ['guard' => self::$configLoader->get('defaults.guard', 'api')]);
     }
 
     /**
@@ -80,26 +80,26 @@ class KodeJwt
      */
     private static function bootAntiReplay(): void
     {
-        if (static::$configLoader === null) {
-            static::$antiReplay = null;
+        if (self::$configLoader === null) {
+            self::$antiReplay = null;
             return;
         }
 
-        $replayConfig = static::$configLoader->get('replay', []);
+        $replayConfig = self::$configLoader->get('replay', []);
         if (empty($replayConfig) || !is_array($replayConfig)) {
-            static::$antiReplay = null;
+            self::$antiReplay = null;
             return;
         }
 
         $antiReplay = new AntiReplay($replayConfig);
         try {
-            $antiReplay->bootstrapFromConfig(static::$configLoader->all());
+            $antiReplay->bootstrapFromConfig(self::$configLoader->all());
         } catch (\Throwable $e) {
-            static::logger()->warning('防重放保护初始化失败，已降级为关闭', ['error' => $e->getMessage()]);
+            self::logger()->warning('防重放保护初始化失败，已降级为关闭', ['error' => $e->getMessage()]);
             $antiReplay = new AntiReplay(['mode' => AntiReplay::MODE_OFF]);
         }
 
-        static::$antiReplay = $antiReplay;
+        self::$antiReplay = $antiReplay;
     }
 
     /**
@@ -107,10 +107,10 @@ class KodeJwt
      */
     public static function antiReplay(): ?AntiReplay
     {
-        if (static::$antiReplay === null && static::$configLoader !== null) {
-            static::bootAntiReplay();
+        if (self::$antiReplay === null && self::$configLoader !== null) {
+            self::bootAntiReplay();
         }
-        return static::$antiReplay;
+        return self::$antiReplay;
     }
 
     /**
@@ -129,7 +129,7 @@ class KodeJwt
         }
 
         static::init($config);
-        static::logger()->info('JWT 配置文件加载成功', ['path' => $path]);
+        self::logger()->info('JWT 配置文件加载成功', ['path' => $path]);
     }
 
     /**
@@ -145,7 +145,7 @@ class KodeJwt
      */
     public static function detectAndLoadConfig(): bool
     {
-        $basePaths = static::detectFrameworkPaths();
+        $basePaths = self::detectFrameworkPaths();
         $configFiles = ['config/jwt.php', 'app/config/jwt.php', 'config/autoload/jwt.php'];
 
         foreach ($basePaths as $basePath) {
@@ -153,7 +153,7 @@ class KodeJwt
                 $fullPath = $basePath . '/' . $configFile;
                 if (file_exists($fullPath)) {
                     static::loadConfigFromFile($fullPath);
-                    static::logger()->debug('自动检测到 JWT 配置文件', ['path' => $fullPath]);
+                    self::logger()->debug('自动检测到 JWT 配置文件', ['path' => $fullPath]);
                     return true;
                 }
             }
@@ -201,7 +201,7 @@ class KodeJwt
      */
     public static function getFrameworkType(): string
     {
-        $basePaths = static::detectFrameworkPaths();
+        $basePaths = self::detectFrameworkPaths();
 
         foreach ($basePaths as $basePath) {
             if (file_exists($basePath . '/artisan')) {
@@ -229,7 +229,7 @@ class KodeJwt
      */
     public static function getFrameworkConfigPath(string $framework, string $filename = 'jwt.php'): string
     {
-        $basePaths = static::detectFrameworkPaths();
+        $basePaths = self::detectFrameworkPaths();
         $basePath = $basePaths[0] ?? getcwd();
 
         return match ($framework) {
@@ -247,7 +247,7 @@ class KodeJwt
      */
     public static function isConfigLoaded(): bool
     {
-        return static::$configLoaded || static::$configLoader !== null;
+        return self::$configLoaded || self::$configLoader !== null;
     }
 
     /**
@@ -324,11 +324,11 @@ class KodeJwt
      */
     public static function config(): ConfigLoader
     {
-        if (static::$configLoader === null) {
+        if (self::$configLoader === null) {
             static::init();
         }
 
-        return static::$configLoader;
+        return self::$configLoader;
     }
 
     /**
@@ -336,11 +336,11 @@ class KodeJwt
      */
     public static function events(): EventDispatcher
     {
-        if (static::$eventDispatcher === null) {
-            static::$eventDispatcher = new EventDispatcher();
+        if (self::$eventDispatcher === null) {
+            self::$eventDispatcher = new EventDispatcher();
         }
 
-        return static::$eventDispatcher;
+        return self::$eventDispatcher;
     }
 
     /**
@@ -350,17 +350,17 @@ class KodeJwt
      */
     public static function logger(): LoggerInterface
     {
-        if (static::$logger !== null) {
-            return static::$logger;
+        if (self::$logger !== null) {
+            return self::$logger;
         }
 
-        if (static::$configLoader !== null) {
-            static::$logger = LoggerFactory::create(static::$configLoader->get('logging', []));
-            return static::$logger;
+        if (self::$configLoader !== null) {
+            self::$logger = LoggerFactory::create(self::$configLoader->get('logging', []));
+            return self::$logger;
         }
 
-        static::$logger = new NullLogger();
-        return static::$logger;
+        self::$logger = new NullLogger();
+        return self::$logger;
     }
 
     /**
@@ -383,11 +383,11 @@ class KodeJwt
      */
     public static function parser(): Parser
     {
-        if (static::$parser === null) {
-            static::$parser = new Parser(static::config()->get('guards.api', []));
+        if (self::$parser === null) {
+            self::$parser = new Parser(static::config()->get('guards.api', []));
         }
 
-        return static::$parser;
+        return self::$parser;
     }
 
     /**
@@ -397,13 +397,13 @@ class KodeJwt
     {
         $name = $name ?? static::config()->get('defaults.storage', 'memory');
 
-        if (!isset(static::$storages[$name])) {
+        if (!isset(self::$storages[$name])) {
             $factory = new StorageFactory(static::config());
-            static::$storages[$name] = $factory->create($name);
-            static::logger()->debug('存储实例创建完成', ['storage' => $name]);
+            self::$storages[$name] = $factory->create($name);
+            self::logger()->debug('存储实例创建完成', ['storage' => $name]);
         }
 
-        return static::$storages[$name];
+        return self::$storages[$name];
     }
 
     /**
@@ -419,7 +419,7 @@ class KodeJwt
             throw new JwtException("Guard [{$name}] is not configured. Available guards: " . implode(', ', $availableGuards));
         }
 
-        if (!isset(static::$guards[$name])) {
+        if (!isset(self::$guards[$name])) {
             $guardConfig = static::config()->get("guards.{$name}", []);
             $storage = static::storage($guardConfig['storage'] ?? 'memory');
 
@@ -435,7 +435,7 @@ class KodeJwt
                         $builder,
                         $parser,
                         static::events(),
-                        static::logger(),
+                        self::logger(),
                         $guardConfig
                     );
                     break;
@@ -446,22 +446,22 @@ class KodeJwt
                         $builder,
                         $parser,
                         static::events(),
-                        static::logger(),
+                        self::logger(),
                         $guardConfig
                     );
                     break;
             }
 
             // 注入防重放保护
-            if (static::$antiReplay !== null && method_exists($guard, 'withAntiReplay')) {
-                $guard->withAntiReplay(static::$antiReplay);
+            if (self::$antiReplay !== null && method_exists($guard, 'withAntiReplay')) {
+                $guard->withAntiReplay(self::$antiReplay);
             }
 
-            static::$guards[$name] = $guard;
-            static::logger()->info('守卫实例创建完成', ['guard' => $name, 'driver' => $guardConfig['driver'] ?? 'sso']);
+            self::$guards[$name] = $guard;
+            self::logger()->info('守卫实例创建完成', ['guard' => $name, 'driver' => $guardConfig['driver'] ?? 'sso']);
         }
 
-        return static::$guards[$name];
+        return self::$guards[$name];
     }
 
     /**
@@ -595,7 +595,7 @@ class KodeJwt
      */
     public static function revokeJti(string $jti, int $ttl = 3600, ?string $guard = null): bool
     {
-        return static::storageForGuard($guard)->blacklist($jti, $ttl);
+        return self::storageForGuard($guard)->blacklist($jti, $ttl);
     }
 
     /**
@@ -607,7 +607,7 @@ class KodeJwt
      */
     public static function isBlacklisted(string $jti, ?string $guard = null): bool
     {
-        return static::storageForGuard($guard)->isBlacklisted($jti);
+        return self::storageForGuard($guard)->isBlacklisted($jti);
     }
 
     /**
@@ -622,7 +622,7 @@ class KodeJwt
      */
     public static function unblacklist(string $jti, ?string $guard = null): bool
     {
-        return static::storageForGuard($guard)->removeFromBlacklist($jti);
+        return self::storageForGuard($guard)->removeFromBlacklist($jti);
     }
 
     /**
@@ -670,9 +670,9 @@ class KodeJwt
             ?? static::config()->get('defaults.storage', 'memory'));
 
         return new Introspector(
-            static::parser(),
+            self::parser(),
             static::storage($storageName),
-            static::logger()
+            self::logger()
         );
     }
 
@@ -821,9 +821,9 @@ class KodeJwt
         $storageName = (string) ($guardConfig['storage'] ?? static::config()->get('defaults.storage', 'memory'));
 
         return new RevocationHandler(
-            static::parser(),
+            self::parser(),
             static::storage($storageName),
-            static::logger()
+            self::logger()
         );
     }
 
@@ -834,10 +834,10 @@ class KodeJwt
      */
     private static function resetRuntimeState(): void
     {
-        static::$guards = [];
-        static::$storages = [];
-        static::$parser = null;
-        static::$logger = null;
-        static::$antiReplay = null;
+        self::$guards = [];
+        self::$storages = [];
+        self::$parser = null;
+        self::$logger = null;
+        self::$antiReplay = null;
     }
 }

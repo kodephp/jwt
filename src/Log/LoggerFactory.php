@@ -88,20 +88,18 @@ class LoggerFactory
     /**
      * 解析 Monolog 日志级别
      */
-    private static function parseMonologLevel(string $level): int
+    private static function parseMonologLevel(string $level): \Monolog\Level
     {
-        $levelClass = \Monolog\Logger::class;
-
         return match (strtolower($level)) {
-            'debug' => $levelClass::DEBUG,
-            'info' => $levelClass::INFO,
-            'notice' => $levelClass::NOTICE,
-            'warning' => $levelClass::WARNING,
-            'error' => $levelClass::ERROR,
-            'critical' => $levelClass::CRITICAL,
-            'alert' => $levelClass::ALERT,
-            'emergency' => $levelClass::EMERGENCY,
-            default => $levelClass::INFO,
+            'debug' => \Monolog\Level::Debug,
+            'info' => \Monolog\Level::Info,
+            'notice' => \Monolog\Level::Notice,
+            'warning' => \Monolog\Level::Warning,
+            'error' => \Monolog\Level::Error,
+            'critical' => \Monolog\Level::Critical,
+            'alert' => \Monolog\Level::Alert,
+            'emergency' => \Monolog\Level::Emergency,
+            default => \Monolog\Level::Info,
         };
     }
 }

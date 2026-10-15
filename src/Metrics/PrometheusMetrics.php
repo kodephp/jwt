@@ -17,7 +17,7 @@ class PrometheusMetrics
     protected array $counters = [];
 
     /**
-     * @var array<string, array{value: int|float, labels: array<string, string>}> 直方图指标
+     * @var array<string, list<array{value: int|float, labels: array<string, string>}>> 直方图指标
      */
     protected array $histograms = [];
 
@@ -232,9 +232,9 @@ class PrometheusMetrics
             foreach ($data as $item) {
                 $labels = $item['labels'];
                 $labelStr = implode(',', array_map(
-                    fn(string $k, string $v) => "{$k}=\"{$v}\"",
+                    fn(int|string $k, string $v) => "{$k}=\"{$v}\"",
                     array_keys((array)$labels),
-                    array_values((array)$labels)
+                    (array)$labels
                 ));
                 $output[] = "{$this->namespace}_{$name}{{$labelStr}} {$item['value']}";
             }
