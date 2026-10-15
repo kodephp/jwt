@@ -13,13 +13,13 @@ final readonly class HybridTokenResponse
 {
     public function __construct(
         public string $accessToken,
-        public string $tokenType = 'Bearer',
-        public int $expiresIn = 3600,
+        public private(set) string $tokenType = 'Bearer',
+        public private(set) int $expiresIn = 3600,
         public ?string $refreshToken = null,
         public ?string $idToken = null,
         public ?string $scope = null,
         public ?string $state = null,
-        public array $additionalParams = []
+        public private(set) array $additionalParams = []
     ) {
     }
 

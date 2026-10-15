@@ -19,7 +19,7 @@ use Kode\Jwt\Exception\JwtException;
 final readonly class RevocationResponse implements Arrayable, Jsonable
 {
     public function __construct(
-        public bool $revoked,
+        public private(set) bool $revoked,
         public ?string $error = null,
         public ?string $errorDescription = null,
     ) {

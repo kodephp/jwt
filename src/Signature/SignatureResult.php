@@ -10,8 +10,8 @@ final readonly class SignatureResult
 {
     public function __construct(
         public string $signature,
-        public Algorithm $algorithm,
-        public string $keyId = ''
+        public private(set) Algorithm $algorithm,
+        public private(set) string $keyId = ''
     ) {
     }
 

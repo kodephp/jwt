@@ -74,7 +74,7 @@ final readonly class Jwk implements Arrayable, Jsonable, Stringable
      * @param string|null $kid 密钥标识，用于在 JWK Set 中选择密钥
      */
     private function __construct(
-        public string $kty,
+        public private(set) string $kty,
         public array $params = [],
         public ?string $use = null,
         public ?array $keyOps = null,

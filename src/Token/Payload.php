@@ -26,17 +26,17 @@ final readonly class Payload implements Arrayable
      * @param string|null $subject 主体
      */
     public function __construct(
-        public int|string|null $uid = null,
+        public private(set) int|string|null $uid = null,
         public ?string $username = null,
         public string $platform = 'default',
-        public int $exp = 0,
-        public int $iat = 0,
+        public private(set) int $exp = 0,
+        public private(set) int $iat = 0,
         public string $jti = '',
         public ?array $roles = null,
         public ?array $perms = null,
-        public array $custom = [],
+        public private(set) array $custom = [],
         public ?string $nonce = null,
-        public string|array|null $audience = null,
+        public private(set) string|array|null $audience = null,
         public ?string $issuer = null,
         public ?string $subject = null
     ) {

@@ -12,12 +12,12 @@ use Kode\Jwt\Exception\JwtException;
 final readonly class KeyVersion
 {
     public function __construct(
-        public string $keyId,
+        public private(set) string $keyId,
         public string $key,
         public int $createdAt,
-        public int $expiresAt,
-        public bool $isActive = true,
-        public bool $isPrimary = false
+        public private(set) int $expiresAt,
+        public private(set) bool $isActive = true,
+        public private(set) bool $isPrimary = false
     ) {
     }
 

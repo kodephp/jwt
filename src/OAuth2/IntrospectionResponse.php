@@ -47,7 +47,7 @@ final readonly class IntrospectionResponse implements Arrayable, Jsonable
      * @param array<string, mixed>|null $extra 额外声明（如 platform / roles / perms）
      */
     public function __construct(
-        public bool $active,
+        public private(set) bool $active,
         public ?string $scope = null,
         public ?string $clientId = null,
         public ?string $username = null,
@@ -56,7 +56,7 @@ final readonly class IntrospectionResponse implements Arrayable, Jsonable
         public ?int $iat = null,
         public ?int $nbf = null,
         public ?string $sub = null,
-        public string|array|null $aud = null,
+        public private(set) string|array|null $aud = null,
         public ?string $iss = null,
         public ?string $jti = null,
         public ?array $extra = null,

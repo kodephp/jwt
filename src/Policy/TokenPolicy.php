@@ -59,13 +59,13 @@ final readonly class TokenPolicy
      */
     public function __construct(
         public ?string $expectedIssuer = null,
-        public string|array|null $expectedAudience = null,
+        public private(set) string|array|null $expectedAudience = null,
         public ?string $expectedPlatform = null,
-        public array $requiredScopes = [],
-        public array $anyScopes = [],
-        public array $requiredCustom = [],
-        public int $clockSkew = self::DEFAULT_CLOCK_SKEW,
-        public bool $ignoreExpiration = false,
+        public private(set) array $requiredScopes = [],
+        public private(set) array $anyScopes = [],
+        public private(set) array $requiredCustom = [],
+        public private(set) int $clockSkew = self::DEFAULT_CLOCK_SKEW,
+        public private(set) bool $ignoreExpiration = false,
     ) {
     }
 

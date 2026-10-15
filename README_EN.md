@@ -1,7 +1,7 @@
 # Kode JWT: A Robust, Comprehensive, Modern PHP 8.4+ JWT Package
 
 > **Project Name**: `kode/jwt`
-> **Current Version**: `v3.0.7`
+> **Current Version**: `v3.1.0`
 > **Goal**: Provide a secure, flexible, high-performance JWT authentication solution for modern PHP applications, supporting Single Sign-On (SSO), Multi-Login, blacklist management, automatic renewal, multi-platform adaptation, Anti-Replay, JWK key management (RFC 7517), Token client fingerprint binding, JWKS endpoint publishing (RFC 7517 §5), Token Introspection (RFC 7662), OIDC Discovery (RFC 8414), and compatibility with FPM, Swoole, RoadRunner, and other runtime environments.
 
 ---

@@ -12,7 +12,7 @@ use Kode\Jwt\Token\Payload;
 final readonly class UserInfo
 {
     public function __construct(
-        public string $sub,
+        public private(set) string $sub,
         public ?string $name = null,
         public ?string $givenName = null,
         public ?string $familyName = null,
@@ -23,16 +23,16 @@ final readonly class UserInfo
         public ?string $picture = null,
         public ?string $website = null,
         public ?string $email = null,
-        public bool $emailVerified = false,
+        public private(set) bool $emailVerified = false,
         public ?string $gender = null,
         public ?string $birthdate = null,
         public ?string $zoneinfo = null,
         public ?string $locale = null,
         public ?string $phoneNumber = null,
-        public bool $phoneNumberVerified = false,
+        public private(set) bool $phoneNumberVerified = false,
         public ?string $address = null,
         public ?int $updatedAt = null,
-        public array $customClaims = []
+        public private(set) array $customClaims = []
     ) {
     }
 

@@ -82,20 +82,20 @@ final readonly class DiscoveryConfiguration implements Arrayable, Jsonable
      * @param array<string, mixed> $extra 额外字段（如 require_auth_time、code_challenge_methods_supported）
      */
     public function __construct(
-        public string $issuer,
-        public string $authorizationEndpoint,
-        public string $tokenEndpoint,
-        public string $jwksUri,
+        public private(set) string $issuer,
+        public private(set) string $authorizationEndpoint,
+        public private(set) string $tokenEndpoint,
+        public private(set) string $jwksUri,
         public ?string $userinfoEndpoint = null,
         public ?string $introspectionEndpoint = null,
         public ?string $revocationEndpoint = null,
         public ?string $endSessionEndpoint = null,
-        public array $scopesSupported = self::DEFAULT_SCOPES_SUPPORTED,
-        public array $responseTypesSupported = self::DEFAULT_RESPONSE_TYPES_SUPPORTED,
-        public array $grantTypesSupported = self::DEFAULT_GRANT_TYPES_SUPPORTED,
-        public array $subjectTypesSupported = self::DEFAULT_SUBJECT_TYPES_SUPPORTED,
-        public array $idTokenSigningAlgValuesSupported = self::DEFAULT_ID_TOKEN_ALGS_SUPPORTED,
-        public array $claimsSupported = self::DEFAULT_CLAIMS_SUPPORTED,
+        public private(set) array $scopesSupported = self::DEFAULT_SCOPES_SUPPORTED,
+        public private(set) array $responseTypesSupported = self::DEFAULT_RESPONSE_TYPES_SUPPORTED,
+        public private(set) array $grantTypesSupported = self::DEFAULT_GRANT_TYPES_SUPPORTED,
+        public private(set) array $subjectTypesSupported = self::DEFAULT_SUBJECT_TYPES_SUPPORTED,
+        public private(set) array $idTokenSigningAlgValuesSupported = self::DEFAULT_ID_TOKEN_ALGS_SUPPORTED,
+        public private(set) array $claimsSupported = self::DEFAULT_CLAIMS_SUPPORTED,
         public array $extra = [],
     ) {
         if ($issuer === '') {

@@ -20,11 +20,11 @@ use Kode\Jwt\Key\Jwk;
 final readonly class DPoPProof
 {
     public function __construct(
-        public Jwk $jwk,
-        public string $jkt,
-        public string $htm,
-        public string $htu,
-        public int $iat,
+        public private(set) Jwk $jwk,
+        public private(set) string $jkt,
+        public private(set) string $htm,
+        public private(set) string $htu,
+        public private(set) int $iat,
         public ?string $ath = null,
         public ?string $nonce = null,
     ) {
